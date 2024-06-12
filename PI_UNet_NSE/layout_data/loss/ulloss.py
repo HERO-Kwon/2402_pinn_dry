@@ -104,7 +104,7 @@ class LaplaceLoss(_Loss):
 '''
 class NSE_layer(torch.nn.Module):
     def __init__(
-            self, nx=21, length=0.1, nu = 15.11*1e-6, bcs=None
+            self, nx=21, length=0.1, nu = 5*1e-2, bcs=None
     ):
         super(NSE_layer, self).__init__()
         self.length = length
@@ -132,20 +132,20 @@ class NSE_layer(torch.nn.Module):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
         p = x[...,2,:,:]
-        return self.u*self.Dx(u)/self.STRIDE + self.v*self.Dy(u)/self.STRIDE + self.Dx(p)/self.STRIDE - self.nu*(self.laplace(u))/self.STRIDE/self.STRIDE
+        return self.u*self.Dx(u) + self.v*self.Dy(u) + self.Dx(p) - self.nu*(self.laplace(u))/self.STRIDE
     def momentum_v(self,x):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
         p = x[...,2,:,:]
-        return self.u*self.Dx(v)/self.STRIDE + self.v*self.Dy(v)/self.STRIDE + self.Dy(p)/self.STRIDE - self.nu*(self.laplace(v))/self.STRIDE/self.STRIDE
+        return self.u*self.Dx(v) + self.v*self.Dy(v) + self.Dy(p) - self.nu*(self.laplace(v))/self.STRIDE
     def continuity(self,x):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
-        return self.Dx(u)/self.STRIDE + self.Dy(v)/self.STRIDE
+        return self.Dx(u) + self.Dy(v)
     def NSE(self,x):
         return self.momentum_u(x) + self.momentum_v(x) + self.continuity(x)
 
-    def forward(self, layout, flow, n_iter):
+    def forward(self, layout, flow):
         # Source item
         f = 0#self.cof * layout
         # The nodes which are not in boundary
@@ -161,7 +161,7 @@ class NSE_layer(torch.nn.Module):
         '''
         # dirichlet bc 0
         # layout에서 1인 위치를 찾습니다.
-        indices = (layout > 0).nonzero(as_tuple=True)
+        indices = (layout == 9).nonzero(as_tuple=True)
         # 인덱스를 사용하여 G의 해당 위치의 값을 변경합니다.
         G[..., :, indices[0], indices[1]] = 0
         # non-slip values
@@ -170,9 +170,10 @@ class NSE_layer(torch.nn.Module):
         G_inout[..., 1, indices[0], indices[1]] = 0 # v inlet
         G_bc[..., 0, indices[0], indices[1]] = 0 # u inlet
         G_bc[..., 1, indices[0], indices[1]] = 0 # v inlet
+        
         # inlet and outlet values
         indices = (layout == 2).nonzero(as_tuple=True)
-        G_inout[..., 0, indices[0], indices[1]] = 3 # u inlet
+        G_inout[..., 0, indices[0], indices[1]] = 0.1 # u inlet
         G_inout[..., 1, indices[0], indices[1]] = 0 # v inlet
         G_bc[..., 0, indices[0], indices[1]] = 0 # u inlet
         G_bc[..., 1, indices[0], indices[1]] = 0 # v inlet
@@ -181,42 +182,12 @@ class NSE_layer(torch.nn.Module):
         G_inout[..., 2, indices[0], indices[1]] = 0 # p outlet
         G_bc[..., 2, indices[0], indices[1]] = 0 # p outlet
         
-        '''
-        if self.bcs is None or len(self.bcs) == 0 or len(self.bcs[0]) == 0:  # all are Dirichlet bcs
-            pass
-        else:
-            for bc in self.bcs:
-                if bc[0][1] == 0 and bc[1][1] == 0:
-                    idx_start = round(bc[0][0] * self.nx / self.length)
-                    idx_end = round(bc[1][0] * self.nx / self.length)
-                    G[..., idx_start:idx_end, :1] = torch.zeros_like(G[..., idx_start:idx_end, :1])
-                elif bc[0][1] == self.length and bc[1][1] == self.length:
-                    idx_start = round(bc[0][0] * self.nx / self.length)
-                    idx_end = round(bc[1][0] * self.nx / self.length)
-                    G[..., idx_start:idx_end, -1:] = torch.zeros_like(G[..., idx_start:idx_end, -1:])
-                elif bc[0][0] == 0 and bc[1][0] == 0:
-                    idx_start = round(bc[0][1] * self.nx / self.length)
-                    idx_end = round(bc[1][1] * self.nx / self.length)
-                    G[..., :1, idx_start:idx_end] = torch.zeros_like(G[..., :1, idx_start:idx_end])
-                elif bc[0][0] == self.length and bc[1][0] == self.length:
-                    idx_start = round(bc[0][1] * self.nx / self.length)
-                    idx_end = round(bc[1][1] * self.nx / self.length)
-                    G[..., -1:, idx_start:idx_end] = torch.zeros_like(G[..., -1:, idx_start:idx_end])
-                else:             
-                    raise ValueError("bc error!")
-        '''
-        for i in range(n_iter):
-            if i == 0:
-                x = F.pad(flow * G_bc + G_nonslip + G_inout, [1, 1, 1, 1], mode='reflect')
-                #x = F.pad(flow, [1, 1, 1, 1], mode='reflect')
+        x = F.pad(flow * G * G_bc + G_nonslip + G_inout, [1, 1, 1, 1], mode='reflect')
                 
-            else:
-                x = F.pad(x, [1, 1, 1, 1], mode='reflect')
-                
-            self.u = x[...,0,1:(self.nx + 1),1:(self.nx + 1)]
-            self.v = x[...,1,1:(self.nx + 1),1:(self.nx + 1)]
-            self.p = x[...,2,1:(self.nx + 1),1:(self.nx + 1)]
-            x = G_bc * (self.NSE(x) + f)
+        self.u = x[...,0,1:(self.nx + 1),1:(self.nx + 1)]
+        self.v = x[...,1,1:(self.nx + 1),1:(self.nx + 1)]
+        self.p = x[...,2,1:(self.nx + 1),1:(self.nx + 1)]
+        x = G * G_bc * (self.NSE(x) + f)
         return x
 
 '''

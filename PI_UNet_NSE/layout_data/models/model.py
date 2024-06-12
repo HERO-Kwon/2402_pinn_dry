@@ -111,13 +111,14 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         # The loss of govern equation + Online Hard Sample Mining
-        with torch.no_grad():
-            flow_nse = self.nse(layout, flow_pre, 1)
+        #with torch.no_grad():
+        flow_nse = self.nse(layout, flow_pre)
 
         #loss_fun = OHEMF12d(loss_fun=F.l1_loss)
-        # loss_fun = torch.nn.MSELoss()
-        loss_fun = torch.nn.L1Loss()
-        loss_nse = loss_fun(flow_pre - flow_nse, torch.zeros_like(flow_pre - flow_nse))
+        loss_fun = torch.nn.MSELoss()
+        #loss_fun = torch.nn.L1Loss()
+        #loss_nse = loss_fun(flow_pre - flow_nse, torch.zeros_like(flow_pre - flow_nse))
+        loss_nse = loss_fun(flow_nse, torch.zeros_like(flow_nse))
         
         loss = loss_nse
 
@@ -134,7 +135,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
 
         loss_nse = F.l1_loss(
-            flow_pre, self.nse(layout, flow_pre.detach(), 1)
+            flow_pre, self.nse(layout, flow_pre.detach())
         )
         val_mae = F.l1_loss(flow_pre, flow)
 
