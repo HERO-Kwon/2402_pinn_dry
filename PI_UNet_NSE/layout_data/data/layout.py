@@ -26,6 +26,7 @@ class LayoutDataset(LoadResponse):
             resp_name="u",
             max_iters=None,
             nx=200,
+            ny=200,
     ):
         root = os.path.join(root, subdir)
         super().__init__(
@@ -39,4 +40,5 @@ class LayoutDataset(LoadResponse):
             target_transform=target_transform,
             max_iters=max_iters,
             nx=nx,
+            ny=ny,
         )

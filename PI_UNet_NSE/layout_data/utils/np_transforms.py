@@ -10,7 +10,7 @@ Desc      :   Transforms.
 import cv2
 import torch
 from torchvision import transforms
-
+import numpy as np
 
 class ToTensor:
     """Transform np.array to torch.tensor
@@ -36,7 +36,9 @@ class Resize:
         self.size = size
 
     def __call__(self, x):
-        return cv2.resize(x, self.size)
+        x_tr = np.transpose(x,(1,2,0))
+        x_res = cv2.resize(x_tr, self.size, interpolation=cv2.INTER_NEAREST)
+        return np.transpose(x_res,(2,0,1))
 
 
 class Lambda(transforms.Lambda):

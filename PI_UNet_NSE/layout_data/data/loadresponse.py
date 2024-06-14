@@ -30,6 +30,7 @@ class LoadResponse(VisionDataset):
         is_valid_file=None,
         max_iters=None,
         nx=200,
+        ny=200,
     ):
         super().__init__(
             root, transform=transform, target_transform=target_transform
@@ -39,6 +40,7 @@ class LoadResponse(VisionDataset):
         self.load_name = load_name
         self.resp_name = resp_name
         self.nx = nx
+        self.ny = ny
         self.extensions = extensions
         self.sample_files = make_dataset_list(root, list_path, extensions, is_valid_file, max_iters=max_iters)
 

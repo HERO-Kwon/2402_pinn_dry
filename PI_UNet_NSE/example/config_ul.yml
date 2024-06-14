@@ -2,18 +2,20 @@
 
 # dataset path
 #data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/complex_component/FDM
-data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_test_geom
+data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom
 train_dir: train
 val_dir: train
 test_dir: train
-train_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_test_geom/train.txt
-val_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_test_geom/val.txt
-test_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_test_geom/test.txt
+train_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/train.txt
+val_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/val.txt
+test_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/test.txt
 
 # dataset properties
 load_name: F # F, list
-length: 0.1
-nx: 200 # select from [50, 100, 150, 200, 400, 800]
+length_x: 6
+length_y: 3
+nx: 256 # select from [50, 100, 150, 200, 400, 800]
+ny: 128
 u_D: 298
 seed: 34
 bcs:

@@ -62,7 +62,9 @@ def parses_ul(config_path):
 
     # dataset params
     parser.add_argument("--nx", type=int)
-    parser.add_argument("--length", type=float)
+    parser.add_argument("--ny", type=int)
+    parser.add_argument("--length_x", type=float)
+    parser.add_argument("--length_y", type=float)
     parser.add_argument("--u_D", type=float)
     parser.add_argument("--bcs", type=yaml.safe_load, action="append", help="Dirichlet boundaries", )
 

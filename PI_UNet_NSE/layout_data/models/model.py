@@ -32,7 +32,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
     def _build_loss(self):
 
-        self.nse = NSE_layer(nx=self.hparams.nx, length=self.hparams.length, bcs=self.hparams.bcs)
+        self.nse = NSE_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y, bcs=self.hparams.bcs)
 
     def forward(self, x):
         y = self.model(x)
@@ -65,9 +65,11 @@ of physics-informed CNN for temperature field prediction of heat source layout
             ),
         ])
         transform_heat = transforms.Compose([
+            transforms.Resize((self.hparams.nx, self.hparams.ny)),
             transforms.ToTensor(add_dim=False),
         ])
         transform_heat_val = transforms.Compose([
+            transforms.Resize((self.hparams.nx, self.hparams.ny)),
             transforms.ToTensor(add_dim=True),
         ])
         train_dataset = LayoutDataset(
@@ -107,7 +109,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
     def training_step(self, batch, batch_idx):
         layout, _ = batch
-        flow_pre = self(layout)
+        flow_pre = self(layout[...,0,:,:])
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         # The loss of govern equation + Online Hard Sample Mining
@@ -129,7 +131,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
     def validation_step(self, batch, batch_idx):
         layout, flow = batch
-        flow_pre = self(layout)
+        flow_pre = self(layout[...,0,:,:])
         #heat_pred_k = heat_pre + 298
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
@@ -143,11 +145,11 @@ of physics-informed CNN for temperature field prediction of heat source layout
             N, _, _, _ = flow.shape
             flow_list, flow_pre_list, flow_err_list = [], [], []
             for flow_idx in range(N):
-                flow_list.append(flow[flow_idx, :, :, :].squeeze().cpu().numpy())
+                #flow_list.append(flow[flow_idx, :, :, :].squeeze().cpu().numpy())
                 flow_pre_list.append(flow_pre[flow_idx, :, :, :].squeeze().cpu().numpy())
-            x = np.linspace(0, 0.1, self.hparams.nx)
-            y = np.linspace(0, 0.1, self.hparams.nx)
-            visualize_heatmap(x, y, flow_list, flow_pre_list, self.current_epoch)
+            x = np.linspace(0, self.hparams.length_x, self.hparams.nx)
+            y = np.linspace(0, self.hparams.length_y, self.hparams.ny)
+            visualize_heatmap(x, y, layout.cpu(), flow_pre_list, self.current_epoch)
 
         return {"val_loss_nse": loss_nse,
                 "val_mae": val_mae}

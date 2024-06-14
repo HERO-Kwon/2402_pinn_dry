@@ -104,21 +104,27 @@ class LaplaceLoss(_Loss):
 '''
 class NSE_layer(torch.nn.Module):
     def __init__(
-            self, nx=21, length=0.1, nu = 5*1e-2, bcs=None
+            self, nx=21, ny=21, length_x = 0.1, length_y=0.1, nu = 5*1e-2, bcs=None
     ):
         super(NSE_layer, self).__init__()
-        self.length = length
+        self.length_x = length_x
+        self.length_y = length_y
         self.nu = nu
         self.bcs = bcs
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.laplace_weight = torch.Tensor([[[[0, 1, 0], [1, -4, 1], [0, 1, 0]]]])
         self.dx_weight = torch.Tensor([[[[0,0,0],[-0.5,0,0.5],[0,0,0]]]])
         self.dy_weight = torch.Tensor([[[[0,-0.5,0],[0,0,0],[0,0.5,0]]]])
+        self.fdx_weight = torch.Tensor([[[[0,0,0],[0,-1,1],[0,0,0]]]])
+        self.fdy_weight = torch.Tensor([[[[0,1,0],[0,-1,0],[0,0,0]]]])
+        self.bdx_weight = torch.Tensor([[[[0,0,0],[-1,1,0],[0,0,0]]]])
+        self.bdy_weight = torch.Tensor([[[[0,0,0],[0,1,0],[0,-1,0]]]])
         # Padding
         self.nx = nx
+        self.ny = ny
         self.scale_factor = 1  # self.nx/200
         TEMPER_COEFFICIENT = 1  # 50
-        self.STRIDE = self.length / (self.nx - 1)
+        self.h = self.length_x / (self.nx - 1)
         # ((l/(nx))^2)/(4*cof)*m*input(x, y)
         #self.cof = 0.25 * STRIDE ** 2 / TEMPER_COEFFICIENT
 
@@ -126,69 +132,131 @@ class NSE_layer(torch.nn.Module):
         return conv2d(x, self.dx_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def Dy(self,x):
         return conv2d(x, self.dy_weight.to(device=x.device), bias=None, stride=1, padding=0)
+    def FDx(self,x):
+        return conv2d(x, self.fdx_weight.to(device=x.device), bias=None, stride=1, padding=0)
+    def FDy(self,x):
+        return conv2d(x, self.fdy_weight.to(device=x.device), bias=None, stride=1, padding=0)
+    def BDx(self,x):
+        return conv2d(x, self.bdx_weight.to(device=x.device), bias=None, stride=1, padding=0)
+    def BDy(self,x):
+        return conv2d(x, self.bdy_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def laplace(self, x):
         return conv2d(x, self.laplace_weight.to(device=x.device), bias=None, stride=1, padding=0)
-    def momentum_u(self,x):
+    def momentum_u(self,x,case):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
         p = x[...,2,:,:]
-        return self.u*self.Dx(u) + self.v*self.Dy(u) + self.Dx(p) - self.nu*(self.laplace(u))/self.STRIDE
-    def momentum_v(self,x):
+        
+        if (case==4)|(case==8)|(case==11):
+            Dp = self.FDx(p)
+        elif (case==6)|(case==9)|(case==10):
+            Dp = self.BDx(p)
+        else:
+            Dp = self.Dx(p)
+
+        return self.u*self.Dx(u)/self.h + self.v*self.Dy(u)/self.h + Dp/self.h - self.nu*(self.laplace(u))/self.h/self.h
+        
+    def momentum_v(self,x,case):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
         p = x[...,2,:,:]
-        return self.u*self.Dx(v) + self.v*self.Dy(v) + self.Dy(p) - self.nu*(self.laplace(v))/self.STRIDE
+
+        if (case==7)|(case==10)|(case==11):
+            Dp = self.FDy(p)
+        elif (case==5)|(case==8)|(case==9):
+            Dp = self.BDy(p)
+        else:
+            Dp = self.Dy(p)
+
+        return self.u*self.Dx(v)/self.h + self.v*self.Dy(v)/self.h + Dp/self.h - self.nu*(self.laplace(v))/self.h/self.h
+    
     def continuity(self,x):
         u = x[...,0,:,:]
         v = x[...,1,:,:]
-        return self.Dx(u) + self.Dy(v)
-    def NSE(self,x):
-        return self.momentum_u(x) + self.momentum_v(x) + self.continuity(x)
+        return self.Dx(u)/self.h + self.Dy(v)/self.h
+    def NSE(self,x,case):
+        return self.momentum_u(x,case) + self.momentum_v(x,case) + self.continuity(x)
+
 
     def forward(self, layout, flow):
         # Source item
         f = 0#self.cof * layout
         # The nodes which are not in boundary
-        G = torch.ones_like(flow).detach()
-        G_nonslip = torch.zeros_like(flow).detach()
-        G_inout = torch.zeros_like(flow).detach()
+        #G = torch.ones_like(flow).detach()
+        #G_nonslip = torch.zeros_like(flow).detach()
+        G_bc_value = torch.zeros_like(flow).detach()
         G_bc = torch.ones_like(flow).detach()
         '''
         0: interior
-        1: non-slip
-        2: inlet
+        1: inflow
+        2: non-slip
         3: outlet
+        4: FD x, 5: BD y, 6: BD x, 7: FD y
+        8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
         '''
         # dirichlet bc 0
-        # layout에서 1인 위치를 찾습니다.
-        indices = (layout == 9).nonzero(as_tuple=True)
-        # 인덱스를 사용하여 G의 해당 위치의 값을 변경합니다.
-        G[..., :, indices[0], indices[1]] = 0
+        layout = layout[...,1,:,:].squeeze()
         # non-slip values
-        indices = (layout == 1).nonzero(as_tuple=True)
-        G_inout[..., 0, indices[0], indices[1]] = 0 # u inlet
-        G_inout[..., 1, indices[0], indices[1]] = 0 # v inlet
-        G_bc[..., 0, indices[0], indices[1]] = 0 # u inlet
-        G_bc[..., 1, indices[0], indices[1]] = 0 # v inlet
+        indices_ns = (layout == 2).nonzero(as_tuple=True)
+        G_bc_value[..., 0, indices_ns[0], indices_ns[1]] = 0 # u
+        G_bc_value[..., 1, indices_ns[0], indices_ns[1]] = 0 # v
+        G_bc_value[..., 2, indices_ns[0], indices_ns[1]] = 0 # p
+        G_bc[..., 0, indices_ns[0], indices_ns[1]] = 0 # u
+        G_bc[..., 1, indices_ns[0], indices_ns[1]] = 0 # v
+        G_bc[..., 2, indices_ns[0], indices_ns[1]] = 0 # p
         
         # inlet and outlet values
-        indices = (layout == 2).nonzero(as_tuple=True)
-        G_inout[..., 0, indices[0], indices[1]] = 0.1 # u inlet
-        G_inout[..., 1, indices[0], indices[1]] = 0 # v inlet
-        G_bc[..., 0, indices[0], indices[1]] = 0 # u inlet
-        G_bc[..., 1, indices[0], indices[1]] = 0 # v inlet
+        indices_in = (layout == 1).nonzero(as_tuple=True)
+        G_bc_value[..., 0, indices_in[0], 0] = 3 # u
+        G_bc_value[..., 1, indices_in[0], 0] = 0 # v
+        G_bc[..., 0, indices_in[0], 0] = 0 # u
+        G_bc[..., 1, indices_in[0], 0] = 0 # v
 
-        indices = (layout == 3).nonzero(as_tuple=True)
-        G_inout[..., 2, indices[0], indices[1]] = 0 # p outlet
-        G_bc[..., 2, indices[0], indices[1]] = 0 # p outlet
+        indices_out = (layout == 3).nonzero(as_tuple=True)
+        G_bc_value[..., 2, indices_out[0], -1] = 0 # p outlet
+        G_bc[..., 2, indices_out[0], -1] = 0 # p outlet
+
+        # 1 side difference
+        indices_1diff = (layout > 3).nonzero(as_tuple=True)
+        G_bc[...,:,indices_1diff[0],indices_1diff[1]] = 0
+
+        #x = F.pad(flow * G * G_bc + G_nonslip + G_inout, [1, 1, 1, 1], mode='reflect')
+        x = flow * G_bc + G_bc_value
+
+        self.u = x[...,0,:,:]
+        self.v = x[...,1,:,:]
+
+        # mask
+        indices_bc4 = (layout == 4).nonzero(as_tuple=True)
+        G_bc4 = torch.ones_like(flow).detach()
+        indices_bc5 = (layout == 5).nonzero(as_tuple=True)
+        G_bc5 = torch.ones_like(flow).detach()
+        indices_bc6 = (layout == 6).nonzero(as_tuple=True)
+        G_bc6 = torch.ones_like(flow).detach()
+        indices_bc7 = (layout == 7).nonzero(as_tuple=True)
+        G_bc7 = torch.ones_like(flow).detach()
+        indices_bc8 = (layout == 8).nonzero(as_tuple=True)
+        G_bc8 = torch.ones_like(flow).detach()
+        indices_bc9 = (layout == 9).nonzero(as_tuple=True)
+        G_bc9 = torch.ones_like(flow).detach()
+        indices_bc10 = (layout == 10).nonzero(as_tuple=True)
+        G_bc10 = torch.ones_like(flow).detach()
+        indices_bc11 = (layout == 11).nonzero(as_tuple=True)
+        G_bc11 = torch.ones_like(flow).detach()
         
-        x = F.pad(flow * G * G_bc + G_nonslip + G_inout, [1, 1, 1, 1], mode='reflect')
-                
-        self.u = x[...,0,1:(self.nx + 1),1:(self.nx + 1)]
-        self.v = x[...,1,1:(self.nx + 1),1:(self.nx + 1)]
-        self.p = x[...,2,1:(self.nx + 1),1:(self.nx + 1)]
-        x = G * G_bc * (self.NSE(x) + f)
-        return x
+        x = F.pad(x,[1,1,1,1], mode='reflect')
+        #loss_nse = G_bc * (self.NSE(x) + f)
+        loss_nse = G_bc * self.NSE(x,0) + f
+        loss_nse += G_bc4 * self.NSE(x,4) + f
+        loss_nse += G_bc5 * self.NSE(x,5) + f
+        loss_nse += G_bc6 * self.NSE(x,6) + f
+        loss_nse += G_bc7 * self.NSE(x,7) + f
+        loss_nse += G_bc8 * self.NSE(x,8) + f
+        loss_nse += G_bc9 * self.NSE(x,9) + f
+        loss_nse += G_bc10 * self.NSE(x,10) + f
+        loss_nse += G_bc11 * self.NSE(x,11) + f
+
+        return loss_nse
 
 '''
 class Jacobi_layerSoft(torch.nn.Module):
