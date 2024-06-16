@@ -2,13 +2,13 @@
 
 # dataset path
 #data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/complex_component/FDM
-data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom
+data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom_resized
 train_dir: train
 val_dir: train
 test_dir: train
-train_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/train.txt
-val_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/val.txt
-test_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom/test.txt
+train_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom_resized/train.txt
+val_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom_resized/val.txt
+test_list: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/nse_ref_geom_resized/test.txt
 
 # dataset properties
 load_name: F # F, list
@@ -27,7 +27,7 @@ bcs:
 
 batch_size: 1
 max_epochs: 3000
-lr: 0.0001
+lr: 0.00005
 # the id of chosen gpu
 gpus: 0
 val_check_interval: 1.0

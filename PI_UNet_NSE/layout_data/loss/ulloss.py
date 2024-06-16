@@ -216,47 +216,57 @@ class NSE_layer(torch.nn.Module):
         G_bc_value[..., 2, indices_out[0], -1] = 0 # p outlet
         G_bc[..., 2, indices_out[0], -1] = 0 # p outlet
 
-        # 1 side difference
-        indices_1diff = (layout > 3).nonzero(as_tuple=True)
-        G_bc[...,:,indices_1diff[0],indices_1diff[1]] = 0
-
         #x = F.pad(flow * G * G_bc + G_nonslip + G_inout, [1, 1, 1, 1], mode='reflect')
         x = flow * G_bc + G_bc_value
 
-        self.u = x[...,0,:,:]
-        self.v = x[...,1,:,:]
+        self.u = x[...,0,1:-1,1:-1]
+        self.v = x[...,1,1:-1,1:-1]
 
         # mask
-        indices_bc4 = (layout == 4).nonzero(as_tuple=True)
-        G_bc4 = torch.ones_like(flow).detach()
-        indices_bc5 = (layout == 5).nonzero(as_tuple=True)
-        G_bc5 = torch.ones_like(flow).detach()
-        indices_bc6 = (layout == 6).nonzero(as_tuple=True)
-        G_bc6 = torch.ones_like(flow).detach()
-        indices_bc7 = (layout == 7).nonzero(as_tuple=True)
-        G_bc7 = torch.ones_like(flow).detach()
-        indices_bc8 = (layout == 8).nonzero(as_tuple=True)
-        G_bc8 = torch.ones_like(flow).detach()
-        indices_bc9 = (layout == 9).nonzero(as_tuple=True)
-        G_bc9 = torch.ones_like(flow).detach()
-        indices_bc10 = (layout == 10).nonzero(as_tuple=True)
-        G_bc10 = torch.ones_like(flow).detach()
-        indices_bc11 = (layout == 11).nonzero(as_tuple=True)
-        G_bc11 = torch.ones_like(flow).detach()
+        indices_1diff = (layout > 3).nonzero(as_tuple=True)
+        G_bc0 = G_bc.clone()
+        G_bc0[...,:,indices_1diff[0],indices_1diff[1]] = 0
         
-        x = F.pad(x,[1,1,1,1], mode='reflect')
+        indices_bc4 = (layout == 4).nonzero(as_tuple=True)
+        G_bc4 = torch.zeros_like(flow).detach()
+        G_bc4[...,:,indices_bc4[0],indices_bc4[1]] = 1
+        indices_bc5 = (layout == 5).nonzero(as_tuple=True)
+        G_bc5 = torch.zeros_like(flow).detach()
+        G_bc5[...,:,indices_bc5[0],indices_bc5[1]] = 1
+        indices_bc6 = (layout == 6).nonzero(as_tuple=True)
+        G_bc6 = torch.zeros_like(flow).detach()
+        G_bc6[...,:,indices_bc6[0],indices_bc6[1]] = 1
+        indices_bc7 = (layout == 7).nonzero(as_tuple=True)
+        G_bc7 = torch.zeros_like(flow).detach()
+        G_bc7[...,:,indices_bc7[0],indices_bc7[1]] = 1
+        indices_bc8 = (layout == 8).nonzero(as_tuple=True)
+        G_bc8 = torch.zeros_like(flow).detach()
+        G_bc8[...,:,indices_bc8[0],indices_bc8[1]] = 1
+        indices_bc9 = (layout == 9).nonzero(as_tuple=True)
+        G_bc9 = torch.zeros_like(flow).detach()
+        G_bc9[...,:,indices_bc9[0],indices_bc9[1]] = 1
+        indices_bc10 = (layout == 10).nonzero(as_tuple=True)
+        G_bc10 = torch.zeros_like(flow).detach()
+        G_bc10[...,:,indices_bc10[0],indices_bc10[1]] = 1
+        indices_bc11 = (layout == 11).nonzero(as_tuple=True)
+        G_bc11 = torch.zeros_like(flow).detach()
+        G_bc11[...,:,indices_bc11[0],indices_bc11[1]] = 1
+        #x = F.pad(x,[1,1,1,1], mode='reflect')
         #loss_nse = G_bc * (self.NSE(x) + f)
-        loss_nse = G_bc * self.NSE(x,0) + f
-        loss_nse += G_bc4 * self.NSE(x,4) + f
-        loss_nse += G_bc5 * self.NSE(x,5) + f
-        loss_nse += G_bc6 * self.NSE(x,6) + f
-        loss_nse += G_bc7 * self.NSE(x,7) + f
-        loss_nse += G_bc8 * self.NSE(x,8) + f
-        loss_nse += G_bc9 * self.NSE(x,9) + f
-        loss_nse += G_bc10 * self.NSE(x,10) + f
-        loss_nse += G_bc11 * self.NSE(x,11) + f
+        loss_nse = G_bc0[...,1:-1,1:-1] * self.NSE(x,0) + f
+        loss_nse += G_bc4[...,1:-1,1:-1] * self.NSE(x,4) + f
+        loss_nse += G_bc5[...,1:-1,1:-1] * self.NSE(x,5) + f
+        loss_nse += G_bc6[...,1:-1,1:-1] * self.NSE(x,6) + f
+        loss_nse += G_bc7[...,1:-1,1:-1] * self.NSE(x,7) + f
+        loss_nse += G_bc8[...,1:-1,1:-1] * self.NSE(x,8) + f
+        loss_nse += G_bc9[...,1:-1,1:-1] * self.NSE(x,9) + f
+        loss_nse += G_bc10[...,1:-1,1:-1] * self.NSE(x,10) + f
+        loss_nse += G_bc11[...,1:-1,1:-1] * self.NSE(x,11) + f
 
-        return loss_nse
+        G_bc_mask = G_bc0+4*G_bc4+5*G_bc5+6*G_bc6+7*G_bc7+8*G_bc8+9*G_bc9+10*G_bc10+11*G_bc11
+        G_bc_v = G_bc + G_bc_value
+
+        return loss_nse, G_bc_mask, G_bc_v
 
 '''
 class Jacobi_layerSoft(torch.nn.Module):

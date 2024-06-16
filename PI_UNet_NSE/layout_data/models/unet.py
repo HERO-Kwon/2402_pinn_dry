@@ -7,66 +7,77 @@ from layout_data.utils.initialize import initialize_weights
 
 class _EncoderBlock(nn.Module):
 
-    def __init__(self, in_channels, out_channels, dropout=False, polling=True, bn=False):
+    def __init__(self, in_channels, out_channels, inlet=False):
         super(_EncoderBlock, self).__init__()
+        self.inlet = inlet
+        if inlet:
+            first_conv_channels = in_channels
+        else:
+            first_conv_channels = out_channels
         layers = [
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect'),
-            nn.BatchNorm2d(out_channels) if bn else nn.GroupNorm(32, out_channels),
-            nn.GELU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect'),
-            nn.BatchNorm2d(out_channels) if bn else nn.GroupNorm(32, out_channels),
-            nn.GELU(),
+            nn.Conv2d(first_conv_channels, out_channels, kernel_size=3, padding=1),#, padding_mode='reflect'),
+            nn.SiLU(),
         ]
-        if dropout:
-            layers.append(nn.Dropout())
         self.encode = nn.Sequential(*layers)
-        self.pool = None
-        if polling:
-            self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        if inlet==False:
+            self.down_conv = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=2, stride=2),
+                nn.SiLU()
+            )
 
     def forward(self, x):
-        if self.pool is not None:
-            x = self.pool(x)
+        if self.inlet==False:
+            x = self.down_conv(x)
         return self.encode(x)
 
 
 class _DecoderBlock(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels, bn=False):
+    def __init__(self, in_channels, out_channels):
         super(_DecoderBlock, self).__init__()
-        self.decode = nn.Sequential(
-            nn.Conv2d(in_channels, middle_channels, kernel_size=3, padding=1, padding_mode='reflect'),
-            nn.BatchNorm2d(middle_channels) if bn else nn.GroupNorm(32, middle_channels),
-            nn.GELU(),
-            nn.Conv2d(middle_channels, out_channels, kernel_size=3, padding=1, padding_mode='reflect'),
-            nn.BatchNorm2d(out_channels) if bn else nn.GroupNorm(32, out_channels),
-            nn.GELU()
+        self.decode1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),#, padding_mode='reflect'),
+            nn.Upsample(scale_factor=(2,2), mode='nearest'),
+        )
+        self.decode2 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),#, padding_mode='reflect'),
+            nn.SiLU(),
         )
 
-    def forward(self, x):
-        return self.decode(x)
+    def forward(self, x, x_enc):
+        x1 = self.decode1(x)
+        x2 = torch.cat([x1,x_enc], dim=1)
+        return self.decode2(x2)
+
+class SeparateDecoder(nn.Module):
+    def __init__(self, in_channels, out_channels, factors=2, num_classes=1):
+        super(SeparateDecoder, self).__init__()
+        self.dec4 = _DecoderBlock(512 * factors, 256 * factors)
+        self.dec3 = _DecoderBlock(256 * factors, 128 * factors)
+        self.dec2 = _DecoderBlock(128 * factors, 64 * factors)
+        self.dec1 = _DecoderBlock(64 * factors, 32 * factors)
+        self.final = nn.Conv2d(32 * factors, num_classes, kernel_size=1)
+
+    def forward(self, x5, x4, x3, x2, x1):
+        x = self.dec4(x5, x4)
+        x = self.dec3(x, x3)
+        x = self.dec2(x, x2)
+        x = self.dec1(x, x1)
+        return self.final(x)
 
 
 class UNet(nn.Module):
-    def __init__(self, num_classes, in_channels=3, bn=False, factors=2):
+    def __init__(self, num_classes, in_channels=1, factors=2):
         super(UNet, self).__init__()
-        self.enc1 = _EncoderBlock(in_channels, 32 * factors, polling=False, bn=bn)
-        self.enc2 = _EncoderBlock(32 * factors, 64 * factors, bn=bn)
-        self.enc3 = _EncoderBlock(64 * factors, 128 * factors, bn=bn)
-        self.enc4 = _EncoderBlock(128 * factors, 256 * factors, bn=bn)
-        self.polling = nn.AvgPool2d(kernel_size=2, stride=2)
-        self.center = _DecoderBlock(256 * factors, 512 * factors, 256 * factors, bn=bn)
-        self.dec4 = _DecoderBlock(512 * factors, 256 * factors, 128 * factors, bn=bn)
-        self.dec3 = _DecoderBlock(256 * factors, 128 * factors, 64 * factors, bn=bn)
-        self.dec2 = _DecoderBlock(128 * factors, 64 * factors, 32 * factors, bn=bn)
-        self.dec1 = nn.Sequential(
-            nn.Conv2d(64 * factors, 32 * factors, kernel_size=3, padding=1, padding_mode='reflect'),
-            nn.BatchNorm2d(32 * factors) if bn else nn.GroupNorm(32, 32 * factors),
-            nn.GELU(),
-            nn.Conv2d(32 * factors, 32 * factors, kernel_size=1, padding=0),
-            nn.BatchNorm2d(32 * factors) if bn else nn.GroupNorm(32, 32 * factors),
-            nn.GELU(),
-        )
-        self.final = nn.Conv2d(32 * factors, num_classes, kernel_size=1)
+        self.enc1 = _EncoderBlock(in_channels, 32 * factors, inlet=True)
+        self.enc2 = _EncoderBlock(32 * factors, 64 * factors)
+        self.enc3 = _EncoderBlock(64 * factors, 128 * factors)
+        self.enc4 = _EncoderBlock(128 * factors, 256 * factors)
+        self.center = _EncoderBlock(256 * factors, 512 * factors)
+        # Separate decoders for U, V, and P
+        self.decoder_U = SeparateDecoder(512 * factors, num_classes)
+        self.decoder_V = SeparateDecoder(512 * factors, num_classes)
+        self.decoder_P = SeparateDecoder(512 * factors, num_classes)
         initialize_weights(self)
 
     def forward(self, x):
@@ -74,17 +85,14 @@ class UNet(nn.Module):
         enc2 = self.enc2(enc1)
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
-        center = self.center(self.polling(enc4))
-        dec4 = self.dec4(torch.cat([F.interpolate(center, enc4.size()[-2:], align_corners=False,
-                                                  mode='bilinear'), enc4], 1))
-        dec3 = self.dec3(torch.cat([F.interpolate(dec4, enc3.size()[-2:], align_corners=False,
-                                                  mode='bilinear'), enc3], 1))
-        dec2 = self.dec2(torch.cat([F.interpolate(dec3, enc2.size()[-2:], align_corners=False,
-                                                  mode='bilinear'), enc2], 1))
-        dec1 = self.dec1(torch.cat([F.interpolate(dec2, enc1.size()[-2:], align_corners=False,
-                                                  mode='bilinear'), enc1], 1))
-        final = self.final(dec1)
-        return final
+        center = self.center(enc4)
+        # Decoding paths for U, V, and P
+        out_U = self.decoder_U(center, enc4, enc3, enc2, enc1)
+        out_V = self.decoder_V(center, enc4, enc3, enc2, enc1)
+        out_P = self.decoder_P(center, enc4, enc3, enc2, enc1)
+
+        return torch.cat([out_U, out_V, out_P], dim=1)
+
 
 
 if __name__ == '__main__':

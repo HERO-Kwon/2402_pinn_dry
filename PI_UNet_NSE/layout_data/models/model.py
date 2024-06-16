@@ -28,7 +28,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
         self._build_loss()
 
     def _build_model(self):
-        self.model = UNet(in_channels=1, num_classes=3, bn=False)
+        self.model = UNet(in_channels=1, num_classes=1)
 
     def _build_loss(self):
 
@@ -114,7 +114,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         # The loss of govern equation + Online Hard Sample Mining
         #with torch.no_grad():
-        flow_nse = self.nse(layout, flow_pre)
+        flow_nse,_,_ = self.nse(layout, flow_pre)
 
         #loss_fun = OHEMF12d(loss_fun=F.l1_loss)
         loss_fun = torch.nn.MSELoss()
@@ -135,9 +135,9 @@ of physics-informed CNN for temperature field prediction of heat source layout
         #heat_pred_k = heat_pre + 298
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
-
+        loss_nse, g_bc_mask, g_bc_v = self.nse(layout, flow_pre.detach())
         loss_nse = F.l1_loss(
-            flow_pre, self.nse(layout, flow_pre.detach())
+            flow_pre[...,1:-1,1:-1], loss_nse
         )
         val_mae = F.l1_loss(flow_pre, flow)
 
@@ -150,7 +150,8 @@ of physics-informed CNN for temperature field prediction of heat source layout
             x = np.linspace(0, self.hparams.length_x, self.hparams.nx)
             y = np.linspace(0, self.hparams.length_y, self.hparams.ny)
             visualize_heatmap(x, y, layout.cpu(), flow_pre_list, self.current_epoch)
-
+            np.save('/home/hero/Git/2402_pinn_dry/PI_UNet_NSE/example/figure/g_bc_mask',g_bc_mask.cpu())
+            np.save('/home/hero/Git/2402_pinn_dry/PI_UNet_NSE/example/figure/g_bc_v',g_bc_v.cpu())
         return {"val_loss_nse": loss_nse,
                 "val_mae": val_mae}
 
