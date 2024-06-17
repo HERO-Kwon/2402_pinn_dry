@@ -65,11 +65,11 @@ of physics-informed CNN for temperature field prediction of heat source layout
             ),
         ])
         transform_heat = transforms.Compose([
-            transforms.Resize((self.hparams.nx, self.hparams.ny)),
+            #transforms.Resize((self.hparams.nx, self.hparams.ny)),
             transforms.ToTensor(add_dim=False),
         ])
         transform_heat_val = transforms.Compose([
-            transforms.Resize((self.hparams.nx, self.hparams.ny)),
+            #transforms.Resize((self.hparams.nx, self.hparams.ny)),
             transforms.ToTensor(add_dim=True),
         ])
         train_dataset = LayoutDataset(
@@ -120,8 +120,10 @@ of physics-informed CNN for temperature field prediction of heat source layout
         loss_fun = torch.nn.MSELoss()
         #loss_fun = torch.nn.L1Loss()
         #loss_nse = loss_fun(flow_pre - flow_nse, torch.zeros_like(flow_pre - flow_nse))
-        loss_nse = loss_fun(flow_nse, torch.zeros_like(flow_nse))
+        loss_nse_m = loss_fun(flow_nse[0], torch.zeros_like(flow_nse[0]))
+        loss_nse_d = loss_fun(flow_nse[1], torch.zeros_like(flow_nse[1]))
         
+        loss_nse = loss_nse_m + loss_nse_d
         loss = loss_nse
 
         self.log('loss_nse', loss_nse)
@@ -137,7 +139,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         loss_nse, g_bc_mask, g_bc_v = self.nse(layout, flow_pre.detach())
         loss_nse = F.l1_loss(
-            flow_pre[...,1:-1,1:-1], loss_nse
+            flow_pre[...,1:-1,1:-1].squeeze(), (loss_nse[0]+loss_nse[1])
         )
         val_mae = F.l1_loss(flow_pre, flow)
 

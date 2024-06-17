@@ -175,7 +175,7 @@ class NSE_layer(torch.nn.Module):
         v = x[...,1,:,:]
         return self.Dx(u)/self.h + self.Dy(v)/self.h
     def NSE(self,x,case):
-        return self.momentum_u(x,case) + self.momentum_v(x,case) + self.continuity(x)
+        return torch.stack([(self.momentum_u(x,case) + self.momentum_v(x,case)), self.continuity(x)])
 
 
     def forward(self, layout, flow):
@@ -253,15 +253,15 @@ class NSE_layer(torch.nn.Module):
         G_bc11[...,:,indices_bc11[0],indices_bc11[1]] = 1
         #x = F.pad(x,[1,1,1,1], mode='reflect')
         #loss_nse = G_bc * (self.NSE(x) + f)
-        loss_nse = G_bc0[...,1:-1,1:-1] * self.NSE(x,0) + f
-        loss_nse += G_bc4[...,1:-1,1:-1] * self.NSE(x,4) + f
-        loss_nse += G_bc5[...,1:-1,1:-1] * self.NSE(x,5) + f
-        loss_nse += G_bc6[...,1:-1,1:-1] * self.NSE(x,6) + f
-        loss_nse += G_bc7[...,1:-1,1:-1] * self.NSE(x,7) + f
-        loss_nse += G_bc8[...,1:-1,1:-1] * self.NSE(x,8) + f
-        loss_nse += G_bc9[...,1:-1,1:-1] * self.NSE(x,9) + f
-        loss_nse += G_bc10[...,1:-1,1:-1] * self.NSE(x,10) + f
-        loss_nse += G_bc11[...,1:-1,1:-1] * self.NSE(x,11) + f
+        loss_nse = G_bc0[...,1:-1,1:-1] * self.NSE(x,0)
+        loss_nse += G_bc4[...,1:-1,1:-1] * self.NSE(x,4)
+        loss_nse += G_bc5[...,1:-1,1:-1] * self.NSE(x,5)
+        loss_nse += G_bc6[...,1:-1,1:-1] * self.NSE(x,6)
+        loss_nse += G_bc7[...,1:-1,1:-1] * self.NSE(x,7)
+        loss_nse += G_bc8[...,1:-1,1:-1] * self.NSE(x,8)
+        loss_nse += G_bc9[...,1:-1,1:-1] * self.NSE(x,9)
+        loss_nse += G_bc10[...,1:-1,1:-1] * self.NSE(x,10)
+        loss_nse += G_bc11[...,1:-1,1:-1] * self.NSE(x,11)
 
         G_bc_mask = G_bc0+4*G_bc4+5*G_bc5+6*G_bc6+7*G_bc7+8*G_bc8+9*G_bc9+10*G_bc10+11*G_bc11
         G_bc_v = G_bc + G_bc_value

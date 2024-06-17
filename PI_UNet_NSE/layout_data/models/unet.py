@@ -58,8 +58,8 @@ class SeparateDecoder(nn.Module):
         self.dec1 = _DecoderBlock(64 * factors, 32 * factors)
         self.final = nn.Conv2d(32 * factors, num_classes, kernel_size=1)
 
-    def forward(self, x5, x4, x3, x2, x1):
-        x = self.dec4(x5, x4)
+    def forward(self, center, x4, x3, x2, x1):
+        x = self.dec4(center, x4)
         x = self.dec3(x, x3)
         x = self.dec2(x, x2)
         x = self.dec1(x, x1)
