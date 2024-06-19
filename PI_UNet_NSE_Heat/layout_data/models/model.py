@@ -28,16 +28,14 @@ of physics-informed CNN for temperature field prediction of heat source layout
         self._build_loss()
 
     def _build_model(self):
-        self.model_nse = UNet(in_channels=1, num_classes=3)
-        self.model_energy = UNet(in_channel=1, num_classes=1)
+        self.model = UNet(in_channels=1, num_classes=1)
 
     def _build_loss(self):
+
         self.nse = NSE_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y, bcs=self.hparams.bcs)
-        self.energy = Energy_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y, bcs=self.hparams.bcs)
 
     def forward(self, x):
-        y = self.model_nse(x)
-        y = self.model_energy(y)
+        y = self.model(x)
         return y
 
     def __dataloader(self, dataset, batch_size, shuffle=True):
@@ -176,7 +174,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
     def test_epoch_end(self, outputs):
         pass
 
-'''
+
 class UnetSL(LightningModule):
     """
     The implementation of supervised vision for comparison.
@@ -304,7 +302,7 @@ class UnetSL(LightningModule):
     def test_epoch_end(self, outputs):
         pass
 
-
+'''
 class UnetULSoft(LightningModule):
     """
     Soft contraints are applied for the boundary conditions.
