@@ -175,7 +175,7 @@ class NSE_layer(torch.nn.Module):
         v = x[...,1,:,:]
         return self.Dx(u)/self.h + self.Dy(v)/self.h
     def NSE(self,x,case):
-        return torch.stack([(self.momentum_u(x,case) + self.momentum_v(x,case)), self.continuity(x)])
+        return torch.stack([self.momentum_u(x,case), self.momentum_v(x,case), self.continuity(x)])
 
 
     def forward(self, layout, flow):
