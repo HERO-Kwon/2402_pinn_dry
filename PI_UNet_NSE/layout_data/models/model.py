@@ -139,17 +139,20 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         loss_nse, g_bc_mask, g_bc_v = self.nse(layout, flow_pre.detach())
+
+        flow_pre_bc = flow_pre * g_bc_v[0] + g_bc_v[1]
+
         loss_nse = F.l1_loss(
-            flow_pre[...,1:-1,1:-1].squeeze(), (loss_nse[0]+loss_nse[1]+loss_nse[2])
+            flow_pre_bc[...,1:-1,1:-1].squeeze(), (loss_nse[0]+loss_nse[1]+loss_nse[2])
         )
-        val_mae = F.l1_loss(flow_pre, flow)
+        val_mae = F.l1_loss(flow_pre_bc, flow)
 
         if batch_idx == 0:
             N, _, _, _ = flow.shape
             flow_list, flow_pre_list, flow_err_list = [], [], []
             for flow_idx in range(N):
                 #flow_list.append(flow[flow_idx, :, :, :].squeeze().cpu().numpy())
-                flow_pre_list.append(flow_pre[flow_idx, :, :, :].squeeze().cpu().numpy())
+                flow_pre_list.append(flow_pre_bc[flow_idx, :, :, :].squeeze().cpu().numpy())
             x = np.linspace(0, self.hparams.length_x, self.hparams.nx)
             y = np.linspace(0, self.hparams.length_y, self.hparams.ny)
             visualize_heatmap(x, y, layout.cpu(), flow_pre_list, self.current_epoch)

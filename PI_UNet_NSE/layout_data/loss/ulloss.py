@@ -264,7 +264,7 @@ class NSE_layer(torch.nn.Module):
         loss_nse += G_bc11[...,1:-1,1:-1] * self.NSE(x,11)
 
         G_bc_mask = G_bc0+4*G_bc4+5*G_bc5+6*G_bc6+7*G_bc7+8*G_bc8+9*G_bc9+10*G_bc10+11*G_bc11
-        G_bc_v = G_bc + G_bc_value
+        G_bc_v = torch.stack([G_bc,G_bc_value])
 
         return loss_nse, G_bc_mask, G_bc_v
 
