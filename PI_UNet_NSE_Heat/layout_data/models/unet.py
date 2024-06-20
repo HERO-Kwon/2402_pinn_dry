@@ -84,20 +84,21 @@ class UNet(nn.Module):
             self.decoder_T = SeparateDecoder(512 * factors, 1)
         initialize_weights(self)
 
-    def forward(self, x):
+    def forward(self, x, num_classes):
         enc1 = self.enc1(x)
         enc2 = self.enc2(enc1)
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
         center = self.center(enc4)
-        # Decoding paths for U, V, and P
-        out_U = self.decoder_U(center, enc4, enc3, enc2, enc1)
-        out_V = self.decoder_V(center, enc4, enc3, enc2, enc1)
-        out_P = self.decoder_P(center, enc4, enc3, enc2, enc1)
-
-        return torch.cat([out_U, out_V, out_P], dim=1)
-
-
+        if num_classes==3:
+            # Decoding paths for U, V, and P
+            out_U = self.decoder_U(center, enc4, enc3, enc2, enc1)
+            out_V = self.decoder_V(center, enc4, enc3, enc2, enc1)
+            out_P = self.decoder_P(center, enc4, enc3, enc2, enc1)
+            out_Unet = torch.cat([out_U, out_V, out_P], dim=1)
+        elif num_classes==1:
+            out_Unet = self.decoder_T(center, enc4, enc3, enc2, enc1)
+        return out_Unet
 
 if __name__ == '__main__':
     model = UNet(in_channels=1, num_classes=1)

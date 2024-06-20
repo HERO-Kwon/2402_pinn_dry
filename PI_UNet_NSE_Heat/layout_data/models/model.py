@@ -9,7 +9,7 @@ import layout_data.utils.np_transforms as transforms
 from layout_data.models.unet import UNet
 from layout_data.utils.visualize import visualize_heatmap
 from layout_data.data.layout import LayoutDataset
-from layout_data.loss.ulloss import NSE_layer, OHEMF12d
+from layout_data.loss.ulloss import NSE_layer, Energy_layer, OHEMF12d
 
 
 class UnetUL(LightningModule):
@@ -28,15 +28,17 @@ of physics-informed CNN for temperature field prediction of heat source layout
         self._build_loss()
 
     def _build_model(self):
-        self.model = UNet(in_channels=1, num_classes=1)
+        self.model_NSE = UNet(in_channels=1, num_classes=3)
+        self.model_Energy = UNet(in_channels=1, num_classes=1)
 
     def _build_loss(self):
-
         self.nse = NSE_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y, bcs=self.hparams.bcs)
+        self.energy = Energy_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y, bcs=self.hparams.bcs)
 
     def forward(self, x):
-        y = self.model(x)
-        return y
+        y_nse = self.model_NSE(x)
+        y_energy = self.model_Energy(x)
+        return torch.stack([y_nse,y_energy],dim=1)
 
     def __dataloader(self, dataset, batch_size, shuffle=True):
         loader = DataLoader(
@@ -111,10 +113,11 @@ of physics-informed CNN for temperature field prediction of heat source layout
         layout, _ = batch
         flow_pre = self(layout[...,0,:,:])
 
-        layout = layout * self.hparams.std_layout + self.hparams.mean_layout
+        #layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         # The loss of govern equation + Online Hard Sample Mining
         #with torch.no_grad():
-        flow_nse,_,_ = self.nse(layout, flow_pre)
+        flow_nse,_,_ = self.nse(layout, flow_pre[...,:2,:,:])
+        flow_energy,_,_ = self.energy(layout, flow_pre.detach())
 
         #loss_fun = OHEMF12d(loss_fun=F.l1_loss)
         loss_fun = torch.nn.MSELoss()
@@ -125,9 +128,13 @@ of physics-informed CNN for temperature field prediction of heat source layout
         loss_nse_d = loss_fun(flow_nse[2], torch.zeros_like(flow_nse[2]))
         loss_nse_m = loss_nse_m_u + loss_nse_m_v
         loss_nse = loss_nse_m + loss_nse_d
-        loss = loss_nse
+        
+        loss_energy = loss_fun(flow_energy[0],torch.zeros_like(flow_energy[0]))
+        
+        loss = loss_nse + loss_energy
 
         self.log('loss_nse', loss_nse)
+        self.log('loss_energy', loss_energy)
         self.log('loss', loss)
 
         return {"loss": loss}
