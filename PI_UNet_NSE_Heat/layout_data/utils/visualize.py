@@ -9,7 +9,7 @@ def visualize_heatmap(x, y, layout, heat_pre_list, epoch):
     plt.figure(figsize=(25, 9))
     
     for j in range(len(heat_pre_list)):
-        num = 3
+        num = 4
         for i in range(num):
             plt.subplot(num, 3, i * 3 + 1)
             plt.contourf(x, y, layout[...,0,:,:].squeeze(), levels=50, cmap=matplotlib.cm.coolwarm)
