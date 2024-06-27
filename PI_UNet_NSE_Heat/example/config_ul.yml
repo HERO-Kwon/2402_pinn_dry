@@ -42,3 +42,11 @@ std_layout: 1
 # mean_heat: 0
 # std_heat: 1
 
+# physical properties
+#nu: 0.05
+
+# boundary condition
+# NSE
+#inlet: [3,0] # [u,v] m/s
+#outlet: 0 # p
+#nonslip: [0,0] # [u,v]
