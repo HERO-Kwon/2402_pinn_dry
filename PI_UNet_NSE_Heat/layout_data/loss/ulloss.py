@@ -140,7 +140,7 @@ class Energy_layer(torch.nn.Module):
         self.h = self.length_x / self.nx
         self.cof = TEMPER_COEFFICIENT
         self.base_loss = base_loss
-        self.diff_coeff = 2.2 * 1e-5
+        self.diff_coeff = 0# 2.2 * 1e-5
 
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
@@ -188,20 +188,37 @@ class Energy_layer(torch.nn.Module):
         mask[...,indices[0],indices[1]] = 1
         self.eq_mask[...,indices[0],indices[1]] = eq_num
 
-        ## 4: FD x, 5: BD y, 6: BD x, 7: FD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
+        ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
 
-        eq_energy = {0:self.advection_diffusion(x), 2:self.advection_diffusion(x),
+        eq_energy = {0:self.advection_diffusion(x), #2:self.advection_diffusion(x),
         3: self.advection_diffusion(x),
-        4: self.advection_diffusion(x)+self.flux*self.Dx(x), 
-        5: self.advection_diffusion(x)+self.flux*-1*self.Dy(x),
-        6: self.advection_diffusion(x)+self.flux*-1*self.Dx(x), 
-        7: self.advection_diffusion(x)+self.flux*self.Dy(x), 
-        8: self.advection_diffusion(x)+self.flux*(-1*self.Dx(x)+self.Dy(x)), 
-        9: self.advection_diffusion(x)+self.flux*(self.Dy(x)+self.Dx(x)), 
-        10: self.advection_diffusion(x)+self.flux*(self.Dx(x)-self.Dy(x)), 
-        11: self.advection_diffusion(x)+self.flux*(-1*self.Dx(x)-self.Dy(x)),}
+        4: self.advection_diffusion(x)+self.FDx(x),
+        5: self.advection_diffusion(x)+self.FDy(x),
+        6: self.advection_diffusion(x)+self.BDx(x),
+        7: self.advection_diffusion(x)+self.BDy(x),
+        8: self.advection_diffusion(x)+(self.FDx(x)+self.FDy(x)),
+        9: self.advection_diffusion(x)+(self.FDy(x)+self.BDx(x)),
+        10: self.advection_diffusion(x)+(self.BDx(x)+self.BDy(x)),
+        11: self.advection_diffusion(x)+(self.FDx(x)+self.BDy(x)),}
 
         return mask * eq_energy[eq_num]
+
+    def apply_Flux(self, x, eq_num):
+        mask = torch.zeros_like(self.boundary)
+        indices = (self.boundary == eq_num).nonzero(as_tuple=True)
+        mask[...,indices[0],indices[1]] = 1
+
+        ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
+
+        eq_flux = {4: torch.abs(self.FDx(x))-self.flux, 5: torch.abs(self.FDy(x))-self.flux,
+        6: torch.abs(self.BDx(x))-self.flux, 
+        7: torch.abs(self.BDy(x))-self.flux, 
+        8: torch.abs(self.FDx(x)+self.FDy(x))-1.41421*(self.flux), 
+        9: torch.abs(self.FDy(x)+self.BDx(x))-1.41421*(self.flux), 
+        10: torch.abs(self.BDx(x)+self.BDy(x))-1.41421*(self.flux), 
+        11: torch.abs(self.FDx(x)+self.BDy(x))-1.41421*(self.flux),}
+
+        return mask * eq_flux[eq_num]
 
     def forward(self, layout, heat, flow):
         self.u = flow[...,0,:,:]
@@ -218,10 +235,10 @@ class Energy_layer(torch.nn.Module):
         self.boundary[...,-1,:] = 3 # lower wall
         
         # Source item
-        self.src = 300 * self.h #* self.h * self.h
+        self.src = 0#300 * self.h #* self.h * self.h
         self.flux = 300 * self.h #-3000
         
-        f = self.cof * abs(self.geom-1) * self.src * self.h
+        f = self.cof * abs(self.geom-1) * self.src #* self.h
 
         # Dirichlet boundary
         self.bc_value = torch.zeros_like(heat).detach()
@@ -235,12 +252,18 @@ class Energy_layer(torch.nn.Module):
         
         # physics
         self.eq_mask = torch.zeros_like(self.boundary)
-        loss_eq = torch.zeros_like(heat)
+        loss_energy = torch.zeros_like(heat)
+        loss_flux = torch.zeros_like(heat)
 
-        for eq_num in [0,2,3,4,5,6,7,8,9,10,11]:
-            loss_eq += self.apply_Energy(x,eq_num)
+        for eq_num in [0,3,4,5,6,7,8,9,10,11]:
+            loss_energy += self.apply_Energy(x,eq_num)
+        mse_energy = self.base_loss(loss_energy, f)
 
-        return self.base_loss(loss_eq, f), heat_bc, self.eq_mask
+        for eq_num in [4,5,6,7,8,9,10,11]:
+            loss_flux += self.apply_Flux(x,eq_num)
+        mse_flux = self.base_loss(loss_flux,torch.zeros_like(loss_flux))
+
+        return mse_energy + mse_flux, heat_bc, self.eq_mask
 
 
 class Jacobi_layer(torch.nn.Module):
