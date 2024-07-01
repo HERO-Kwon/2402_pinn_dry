@@ -9,7 +9,7 @@ import layout_data.utils.np_transforms as transforms
 from layout_data.models.unet import UNet
 from layout_data.utils.visualize import visualize_heatmap
 from layout_data.data.layout import LayoutDataset
-from layout_data.loss.ulloss import NSE_layer, Energy_layer, OHEMF12d
+from layout_data.loss.ulloss import * #NSE_layer, Energy_layer, Evp_layer, OHEMF12d
 
 
 class UnetUL(LightningModule):
@@ -35,12 +35,14 @@ of physics-informed CNN for temperature field prediction of heat source layout
     def _build_loss(self):
         self.nse = NSE_layer(nx=self.hparams.nx, ny=self.hparams.ny, 
                             length_x=self.hparams.length_x, length_y=self.hparams.length_y)
-        self.energy = Energy_layer(nx=self.hparams.nx, ny=self.hparams.ny, length_x=self.hparams.length_x, length_y=self.hparams.length_y)
+        self.energy = Energy_Evp_layer(nx=self.hparams.nx, ny=self.hparams.ny, 
+                            length_x=self.hparams.length_x, length_y=self.hparams.length_y)
 
     def forward(self, x):
         y_nse = self.model_NSE(x,3)
         y_energy = self.model_Energy(x,1)
-        return [y_nse,y_energy]
+        y_wc = self.model_Evp(x,1)
+        return [y_nse,y_energy,y_wc]
 
     def __dataloader(self, dataset, batch_size, shuffle=True):
         loader = DataLoader(
@@ -113,43 +115,46 @@ of physics-informed CNN for temperature field prediction of heat source layout
 
     def training_step(self, batch, batch_idx):
         layout, _ = batch
-        flow_pre, heat_pre = self(layout[...,0,:,:])
+        flow_pre, heat_pre, evp_pre = self(layout[...,0,:,:])
         # layout[...,0,:,:] <- geometry, layout[...,1,:,:] <- boudnary
         
         # The loss of govern equation
-        loss_nse,_,_ = self.nse(layout, flow_pre)
-        loss_energy,_,_ = self.energy(layout, heat_pre, flow_pre.detach())
-
+        loss_nse,_,_ = self.nse(layout, flow_pre.detach())
+        heat_ini = heat_pre.clone().detach()
+        loss_energy,_,_ = self.energy(layout, heat_ini, evp_pre, heat_pre, flow_pre.detach())
+        
 
         #with torch.no_grad():
         #    heat_jacobi = self.energy(layout, heat_pre, 1)
         
-        loss = loss_nse + loss_energy
+        loss = loss_nse+loss_energy
 
         self.log('loss_nse', loss_nse)
         self.log('loss_energy', loss_energy)
-        self.log('loss', loss)
-
+        #self.log('loss_evp', loss_evp)
+        #self.log('loss', loss)
+        
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
-        
         layout, flow = batch
-        flow_pre, heat_pre = self(layout[...,0,:,:])
+        flow_pre, heat_pre, evp_pre = self(layout[...,0,:,:])
         #heat_pred_k = heat_pre + 298
+        heat_ini = heat_pre.clone().detach()
 
         #layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         loss_nse, flow_bc, eq_mask = self.nse(layout, flow_pre.detach())
-        loss_energy, heat_bc, heat_eq_mask = self.energy(layout, heat_pre.detach(), flow_pre.detach())
+        loss_energy, heat_bc, heat_eq_mask = self.energy(layout, heat_ini, evp_pre.detach(), heat_pre.detach(), flow_pre.detach())
         #loss_energy = F.l1_loss(
         #    heat_pre, self.energy(layout, heat_pre.detach(), 1)
         #)
-
-        fh_pre_bc = torch.cat([flow_bc,heat_pre],dim=1)
+        
+        fh_pre_bc = torch.cat([flow_bc,heat_bc],dim=1)
 
         loss_nse += loss_energy
-        val_mae = F.l1_loss(flow_bc, flow)
 
+        val_mae = F.l1_loss(flow_bc, flow)
+        
         if batch_idx == 0:
             N, _, _, _ = flow.shape
             flow_list, flow_pre_list, flow_err_list = [], [], []
@@ -165,14 +170,15 @@ of physics-informed CNN for temperature field prediction of heat source layout
             np.save('/home/hero/Git/2402_pinn_dry/PI_UNet_NSE_Heat/example/figure/heat_eq_mask',heat_eq_mask.cpu())
         return {"val_loss_nse": loss_nse,
                 "val_mae": val_mae}
-
+        
     def validation_epoch_end(self, outputs):
+        
         val_loss_nse_mean = torch.stack([x["val_loss_nse"] for x in outputs]).mean()
         val_mae_mean = torch.stack([x["val_mae"] for x in outputs]).mean()
-
+        
         self.log('val_loss_nse', val_loss_nse_mean)
         self.log('val_mae_mean', val_mae_mean)
-
+        
     def test_step(self, batch, batch_idx):
         pass
 

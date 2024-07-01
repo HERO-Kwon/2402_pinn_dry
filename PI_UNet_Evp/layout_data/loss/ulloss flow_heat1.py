@@ -140,7 +140,7 @@ class Energy_layer(torch.nn.Module):
         self.h = self.length_x / self.nx
         self.cof = TEMPER_COEFFICIENT
         self.base_loss = base_loss
-        self.diff_coeff = 2.2 * 1e-5
+        self.diff_coeff = 0#2.2 * 1e-5
 
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
