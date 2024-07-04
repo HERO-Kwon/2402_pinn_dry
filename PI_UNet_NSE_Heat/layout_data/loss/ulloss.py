@@ -140,7 +140,7 @@ class Energy_layer(torch.nn.Module):
         self.h = self.length_x / self.nx
         self.cof = TEMPER_COEFFICIENT
         self.base_loss = base_loss
-        self.diff_coeff = 0# 2.2 * 1e-5
+        self.diff_coeff = 0#2.2 * 1e-5
 
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
@@ -169,7 +169,17 @@ class Energy_layer(torch.nn.Module):
         return conv2d(x, self.laplace_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def jacobi(self, x):
         return conv2d(x, self.weight.to(device=x.device), bias=None, stride=1, padding=0)
-    def advection_diffusion(self, x):
+    def advection_diffusion(self, x, case):
+        '''
+        if (case==4)|(case==8)|(case==11): uDx = self.u*self.FDx(x)
+        elif (case==6)|(case==9)|(case==10): uDx = self.u*self.BDx(x)
+        else: uDx = self.u*self.Dx(x)
+
+        if (case==7)|(case==10)|(case==11): vDy = self.v*self.FDy(x)
+        elif (case==5)|(case==8)|(case==9): vDy = self.v*self.BDy(x)
+        
+        else: vDy = self.v*self.Dy(x)
+        '''
         return self.u*self.Dx(x)+self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h
     def newman_bc(self,x):
         return conv2d(x, self.boundary_weight.to(device=x.device), bias=None, stride=1, padding=0)
@@ -181,7 +191,6 @@ class Energy_layer(torch.nn.Module):
             self.bc_mask[...,var_num[item], indices[0], indices[1]] = 0
             self.bc_value[..., var_num[item], indices[0], indices[1]] = outvar[item]
         return None
-    
     def apply_Energy(self, x, eq_num):
         mask = torch.zeros_like(self.boundary)
         indices = (self.boundary == eq_num).nonzero(as_tuple=True)
@@ -190,16 +199,16 @@ class Energy_layer(torch.nn.Module):
 
         ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
 
-        eq_energy = {0:self.advection_diffusion(x), #2:self.advection_diffusion(x),
-        3: self.advection_diffusion(x),
-        4: self.advection_diffusion(x)+self.FDx(x),
-        5: self.advection_diffusion(x)+self.FDy(x),
-        6: self.advection_diffusion(x)+self.BDx(x),
-        7: self.advection_diffusion(x)+self.BDy(x),
-        8: self.advection_diffusion(x)+(self.FDx(x)+self.FDy(x)),
-        9: self.advection_diffusion(x)+(self.FDy(x)+self.BDx(x)),
-        10: self.advection_diffusion(x)+(self.BDx(x)+self.BDy(x)),
-        11: self.advection_diffusion(x)+(self.FDx(x)+self.BDy(x)),}
+        eq_energy = {0:self.advection_diffusion(x,0), 2:self.advection_diffusion(x,2),
+        3: self.advection_diffusion(x,3),
+        4: self.advection_diffusion(x,4),#-self.Dx(x),
+        5: self.advection_diffusion(x,5),#-self.Dy(x),
+        6: self.advection_diffusion(x,6),#+self.Dx(x),
+        7: self.advection_diffusion(x,7),#+self.Dy(x),
+        8: self.advection_diffusion(x,8),#+(-self.Dx(x)-self.Dy(x)),
+        9: self.advection_diffusion(x,9),#+(-self.Dy(x)+self.Dx(x)),
+        10: self.advection_diffusion(x,10),#+(self.Dx(x)+self.Dy(x)),
+        11: self.advection_diffusion(x,11),}#+(-self.Dx(x)+self.Dy(x)),}
 
         return mask * eq_energy[eq_num]
 
@@ -210,15 +219,18 @@ class Energy_layer(torch.nn.Module):
 
         ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
 
-        eq_flux = {4: torch.abs(self.FDx(x))-self.flux, 5: torch.abs(self.FDy(x))-self.flux,
-        6: torch.abs(self.BDx(x))-self.flux, 
-        7: torch.abs(self.BDy(x))-self.flux, 
-        8: torch.abs(self.FDx(x)+self.FDy(x))-1.41421*(self.flux), 
-        9: torch.abs(self.FDy(x)+self.BDx(x))-1.41421*(self.flux), 
-        10: torch.abs(self.BDx(x)+self.BDy(x))-1.41421*(self.flux), 
-        11: torch.abs(self.FDx(x)+self.BDy(x))-1.41421*(self.flux),}
+        eq_flux = {
+        4: self.Dx(x)+self.Dy(x)-self.flux*self.FDx(x)/torch.abs(self.FDx(x)+1e-6), 
+        5: self.Dx(x)+self.Dy(x)-self.flux*self.FDy(x)/torch.abs(self.FDy(x)+1e-6),
+        6: self.Dx(x)+self.Dy(x)+self.flux*self.BDx(x)/torch.abs(self.BDx(x)+1e-6), 
+        7: self.Dx(x)+self.Dy(x)+self.flux*self.BDy(x)/torch.abs(self.BDy(x)+1e-6), 
+        8: self.Dx(x)+self.Dy(x)+self.flux*(-self.FDx(x)/torch.abs(self.FDx(x)+1e-6)-self.FDy(x)/torch.abs(self.FDy(x)+1e-6)), 
+        9: self.Dy(x)+self.Dx(x)+self.flux*(-self.FDy(x)/torch.abs(self.FDy(x)+1e-6)+self.BDx(x)/torch.abs(self.BDx(x)+1e-6)), 
+        10: self.Dx(x)+self.Dy(x)+self.flux*(self.BDx(x)/torch.abs(self.BDx(x)+1e-6)+self.BDy(x)/torch.abs(self.BDy(x)+1e-6)), 
+        11: self.Dx(x)+self.Dy(x)+self.flux*(-self.FDx(x)/torch.abs(self.FDx(x)+1e-6)+self.BDy(x)/torch.abs(self.BDy(x)+1e-6)),}
 
         return mask * eq_flux[eq_num]
+
 
     def forward(self, layout, heat, flow):
         self.u = flow[...,0,:,:]
@@ -236,7 +248,7 @@ class Energy_layer(torch.nn.Module):
         
         # Source item
         self.src = 0#300 * self.h #* self.h * self.h
-        self.flux = 300 * self.h #-3000
+        self.flux = 300*self.h  #-3000
         
         f = self.cof * abs(self.geom-1) * self.src #* self.h
 
@@ -245,6 +257,7 @@ class Energy_layer(torch.nn.Module):
         self.bc_mask = torch.ones_like(heat).detach()
         
         self.set_bc(bc_num=1, outvar={'tmp':0}) # inlet
+        self.set_bc(bc_num=2, outvar={'tmp':0}) # src
         
         heat_bc = heat * self.bc_mask + self.bc_value
 
@@ -258,11 +271,11 @@ class Energy_layer(torch.nn.Module):
         for eq_num in [0,3,4,5,6,7,8,9,10,11]:
             loss_energy += self.apply_Energy(x,eq_num)
         mse_energy = self.base_loss(loss_energy, f)
-
+        
         for eq_num in [4,5,6,7,8,9,10,11]:
             loss_flux += self.apply_Flux(x,eq_num)
         mse_flux = self.base_loss(loss_flux,torch.zeros_like(loss_flux))
-
+        
         return mse_energy + mse_flux, heat_bc, self.eq_mask
 
 
