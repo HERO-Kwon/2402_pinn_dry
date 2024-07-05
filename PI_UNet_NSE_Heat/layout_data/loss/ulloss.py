@@ -42,7 +42,7 @@ class NSE_layer(torch.nn.Module):
         return conv2d(x, self.bdy_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def laplace(self, x):
         return conv2d(x, self.laplace_weight.to(device=x.device), bias=None, stride=1, padding=0)
-    
+    ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7     
     # NSE
     def momentum_u(self,x,case):
         u = x[...,0,:,:]
@@ -57,8 +57,8 @@ class NSE_layer(torch.nn.Module):
         v = x[...,1,:,:]
         p = x[...,2,:,:]
         
-        if (case==7)|(case==10)|(case==11): Dp = self.FDy(p)
-        elif (case==5)|(case==8)|(case==9): Dp = self.BDy(p)
+        if (case==7)|(case==10)|(case==11): Dp = self.BDy(p)
+        elif (case==5)|(case==8)|(case==9): Dp = self.FDy(p)
         else: Dp = self.Dy(p)
         
         return self.u*self.Dx(v)/self.h + self.v*self.Dy(v)/self.h + Dp/self.h - self.nu*(self.laplace(v))/self.h/self.h
@@ -170,17 +170,20 @@ class Energy_layer(torch.nn.Module):
     def jacobi(self, x):
         return conv2d(x, self.weight.to(device=x.device), bias=None, stride=1, padding=0)
     def advection_diffusion(self, x, case):
+        ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
         '''
-        if (case==4)|(case==8)|(case==11): uDx = self.u*self.FDx(x)
-        elif (case==6)|(case==9)|(case==10): uDx = self.u*self.BDx(x)
-        else: uDx = self.u*self.Dx(x)
+        if (case==4)|(case==8)|(case==11): uDx = self.u*self.FDx(x)/self.h
+        elif (case==6)|(case==9)|(case==10): uDx = self.u*self.BDx(x)/self.h
+        else: uDx = self.u*self.Dx(x)/self.h
 
-        if (case==7)|(case==10)|(case==11): vDy = self.v*self.FDy(x)
-        elif (case==5)|(case==8)|(case==9): vDy = self.v*self.BDy(x)
-        
-        else: vDy = self.v*self.Dy(x)
+        if (case==7)|(case==10)|(case==11): vDy = self.v*self.BDy(x)/self.h
+        elif (case==5)|(case==8)|(case==9): vDy = self.v*self.FDy(x)/self.h
+        else: vDy = self.v*self.Dy(x)/self.h
         '''
-        return self.u*self.Dx(x)+self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h
+        uDx = self.u*self.Dx(x)/self.h
+        vDy = self.v*self.Dy(x)/self.h
+        return uDx+vDy - self.diff_coeff*(self.laplace(x))/self.h/self.h
+        #return self.u*self.Dx(x)+self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h
     def newman_bc(self,x):
         return conv2d(x, self.boundary_weight.to(device=x.device), bias=None, stride=1, padding=0)
 
@@ -218,16 +221,16 @@ class Energy_layer(torch.nn.Module):
         mask[...,indices[0],indices[1]] = 1
 
         ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
-
+        
         eq_flux = {
-        4: self.Dx(x)+self.Dy(x)-self.flux*self.FDx(x)/torch.abs(self.FDx(x)+1e-6), 
-        5: self.Dx(x)+self.Dy(x)-self.flux*self.FDy(x)/torch.abs(self.FDy(x)+1e-6),
-        6: self.Dx(x)+self.Dy(x)+self.flux*self.BDx(x)/torch.abs(self.BDx(x)+1e-6), 
-        7: self.Dx(x)+self.Dy(x)+self.flux*self.BDy(x)/torch.abs(self.BDy(x)+1e-6), 
-        8: self.Dx(x)+self.Dy(x)+self.flux*(-self.FDx(x)/torch.abs(self.FDx(x)+1e-6)-self.FDy(x)/torch.abs(self.FDy(x)+1e-6)), 
-        9: self.Dy(x)+self.Dx(x)+self.flux*(-self.FDy(x)/torch.abs(self.FDy(x)+1e-6)+self.BDx(x)/torch.abs(self.BDx(x)+1e-6)), 
-        10: self.Dx(x)+self.Dy(x)+self.flux*(self.BDx(x)/torch.abs(self.BDx(x)+1e-6)+self.BDy(x)/torch.abs(self.BDy(x)+1e-6)), 
-        11: self.Dx(x)+self.Dy(x)+self.flux*(-self.FDx(x)/torch.abs(self.FDx(x)+1e-6)+self.BDy(x)/torch.abs(self.BDy(x)+1e-6)),}
+        4: self.Dx(x)/self.h+self.Dy(x)/self.h+self.flux*self.FDx(x)/self.h/torch.abs(self.FDx(x)/self.h+1e-6), 
+        5: self.Dx(x)/self.h+self.Dy(x)/self.h+self.flux*self.FDy(x)/self.h/torch.abs(self.FDy(x)/self.h+1e-6),
+        6: -self.Dx(x)/self.h+self.Dy(x)/self.h+self.flux*self.BDx(x)/self.h/torch.abs(self.BDx(x)/self.h+1e-6), 
+        7: self.Dx(x)/self.h-self.Dy(x)/self.h+self.flux*self.BDy(x)/self.h/torch.abs(self.BDy(x)/self.h+1e-6), 
+        8: self.Dx(x)/self.h+self.Dy(x)/self.h+self.flux*(self.FDx(x)/self.h/torch.abs(self.FDx(x)/self.h+1e-6)+self.FDy(x)/self.h/torch.abs(self.FDy(x)/self.h+1e-6)), 
+        9: self.Dy(x)/self.h-self.Dx(x)/self.h+self.flux*(self.FDy(x)/self.h/torch.abs(self.FDy(x)/self.h+1e-6)+self.BDx(x)/self.h/torch.abs(self.BDx(x)/self.h+1e-6)), 
+        10: -self.Dx(x)/self.h-self.Dy(x)/self.h+self.flux*(self.BDx(x)/self.h/torch.abs(self.BDx(x)/self.h+1e-6)+self.BDy(x)/self.h/torch.abs(self.BDy(x)/self.h+1e-6)), 
+        11: self.Dx(x)/self.h-self.Dy(x)/self.h+self.flux*(self.FDx(x)/self.h/torch.abs(self.FDx(x)/self.h+1e-6)+self.BDy(x)/self.h/torch.abs(self.BDy(x)/self.h+1e-6)),}
 
         return mask * eq_flux[eq_num]
 
@@ -247,8 +250,8 @@ class Energy_layer(torch.nn.Module):
         self.boundary[...,-1,:] = 3 # lower wall
         
         # Source item
-        self.src = 0#300 * self.h #* self.h * self.h
-        self.flux = 300*self.h  #-3000
+        self.src = 0 #300 * 24 / 15#300 * self.h #* self.h * self.h
+        self.flux = 0#300  #-3000
         
         f = self.cof * abs(self.geom-1) * self.src #* self.h
 
@@ -257,7 +260,19 @@ class Energy_layer(torch.nn.Module):
         self.bc_mask = torch.ones_like(heat).detach()
         
         self.set_bc(bc_num=1, outvar={'tmp':0}) # inlet
-        self.set_bc(bc_num=2, outvar={'tmp':0}) # src
+        self.set_bc(bc_num=2, outvar={'tmp':30}) # src
+        # heat flux boundary
+        '''
+        self.set_bc(bc_num=4, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=5, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=6, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=7, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=8, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=9, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=10, outvar={'tmp':300*self.h})
+        self.set_bc(bc_num=11, outvar={'tmp':300*self.h})
+        '''
+
         
         heat_bc = heat * self.bc_mask + self.bc_value
 
@@ -267,14 +282,19 @@ class Energy_layer(torch.nn.Module):
         self.eq_mask = torch.zeros_like(self.boundary)
         loss_energy = torch.zeros_like(heat)
         loss_flux = torch.zeros_like(heat)
+        #mse_energy = 0
+        #mse_flux = 0
 
         for eq_num in [0,3,4,5,6,7,8,9,10,11]:
-            loss_energy += self.apply_Energy(x,eq_num)
+            loss_energy = self.apply_Energy(x,eq_num)
+            #mse_energy += self.base_loss(loss_energy,torch.zeros_like(loss_energy))
         mse_energy = self.base_loss(loss_energy, f)
         
-        for eq_num in [4,5,6,7,8,9,10,11]:
-            loss_flux += self.apply_Flux(x,eq_num)
-        mse_flux = self.base_loss(loss_flux,torch.zeros_like(loss_flux))
+        for eq_num in []:#4,5,6,7,8,9,10,11]:
+            loss_flux = self.apply_Flux(x,eq_num)
+            #mse_flux += self.base_loss(loss_flux, torch.zeros_like(loss_flux))
+        flux_loss=MSELoss(reduction='sum')
+        mse_flux = flux_loss(loss_flux,torch.zeros_like(loss_flux))
         
         return mse_energy + mse_flux, heat_bc, self.eq_mask
 

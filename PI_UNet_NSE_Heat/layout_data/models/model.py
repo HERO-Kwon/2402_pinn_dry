@@ -118,7 +118,7 @@ of physics-informed CNN for temperature field prediction of heat source layout
         
         # The loss of govern equation
         loss_nse,flow_bc,_ = self.nse(layout, flow_pre)
-        loss_energy,_,_ = self.energy(layout, heat_pre, flow_pre.detach())
+        loss_energy,_,_ = self.energy(layout, heat_pre, flow_bc.detach())
 
 
         #with torch.no_grad():
