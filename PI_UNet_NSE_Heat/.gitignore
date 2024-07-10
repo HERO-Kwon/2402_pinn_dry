@@ -1,3 +1,6 @@
 /example/figure/*
 /example/lightning_logs/*
 *.pyc
+*.png
+/saved_checkpoint/energy_src_300/checkpoints/*
+/saved_checkpoint/energy_src_300/figures/*

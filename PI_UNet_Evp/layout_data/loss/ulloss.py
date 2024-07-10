@@ -140,7 +140,7 @@ class Energy_Evp_layer(torch.nn.Module):
         self.h = self.length_x / self.nx
         self.cof = TEMPER_COEFFICIENT
         self.base_loss = base_loss
-        self.diff_coeff = 0#2.2 * 1e-5
+        self.diff_coeff = 1#2.2 * 1e-5
 
         # evp
         # parameters
@@ -169,8 +169,7 @@ class Energy_Evp_layer(torch.nn.Module):
 
         self.wc0 = WC0*TH0*1e-3/THcell
         self.flux = 300
-        
-
+    
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
         self.laplace_weight = torch.Tensor([[[[0, 1, 0], [1, -4, 1], [0, 1, 0]]]])
@@ -180,8 +179,12 @@ class Energy_Evp_layer(torch.nn.Module):
         self.fdy_weight = torch.Tensor([[[[0,1,0],[0,-1,0],[0,0,0]]]])
         self.bdx_weight = torch.Tensor([[[[0,0,0],[-1,1,0],[0,0,0]]]])
         self.bdy_weight = torch.Tensor([[[[0,0,0],[0,1,0],[0,-1,0]]]])
-        self.boundary_weight = torch.Tensor([[[[0,1,0],[1,0,-1],[0,-1,0]]]])
-        
+        self.heat_f_weight = torch.Tensor([[[[0,0,0],[0,1,0],[0,0,0]]]])
+        self.heat_w4_weight = torch.Tensor([[[[0,0,0],[1,0,0],[0,0,0]]]])
+        self.heat_w5_weight = torch.Tensor([[[[0,1,0],[0,0,0],[0,0,0]]]])
+        self.heat_w6_weight = torch.Tensor([[[[0,0,0],[0,0,1],[0,0,0]]]])
+        self.heat_w7_weight = torch.Tensor([[[[0,0,0],[0,0,0],[0,1,0]]]])
+
     def Dx(self,x):
         return conv2d(x, self.dx_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def Dy(self,x):
@@ -196,23 +199,50 @@ class Energy_Evp_layer(torch.nn.Module):
         return conv2d(x, self.bdy_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def laplace(self, x):
         return conv2d(x, self.laplace_weight.to(device=x.device), bias=None, stride=1, padding=0)
-    def jacobi(self, x):
-        return conv2d(x, self.weight.to(device=x.device), bias=None, stride=1, padding=0)
+    def heat_f(self,x):
+        return conv2d(x, self.heat_f_weight.to(device=x.device), bias=None, stride=1, padding=0) 
+    def heat_w(self, x, eq_num):
+        if eq_num==4:
+            return conv2d(x, self.heat_w4_weight.to(device=x.device), bias=None, stride=1, padding=0)
+        elif eq_num==5:
+            return conv2d(x, self.heat_w5_weight.to(device=x.device), bias=None, stride=1, padding=0)
+        elif eq_num==6:
+            return conv2d(x, self.heat_w6_weight.to(device=x.device), bias=None, stride=1, padding=0)
+        elif eq_num==7:
+            return conv2d(x, self.heat_w7_weight.to(device=x.device), bias=None, stride=1, padding=0)
+
     def advection_diffusion(self, x):
-        return self.heat_ini - 0.001*(self.u*self.Dx(x)+self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h)
+        #return (self.u*self.Dx(x) + self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h)
+        return (self.heat_new - x[...,1:-1,1:-1])*self.h + 1*(self.u*self.Dx(x) + self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h)
     def wc(self,x):
-        return  self.wc0 - 0.001*self.m_dot
-    def set_bc(self, bc_num, outvar):
-        var_num = {'tmp':0}
-        indices = (self.boundary == bc_num).nonzero(as_tuple=True)
-        for item in outvar:
-            self.bc_mask[...,var_num[item], indices[0], indices[1]] = 0
-            self.bc_value[..., var_num[item], indices[0], indices[1]] = outvar[item]
-        return None
-        
-    def evp(self,tmp,wc):
-        u_temperature_f = tmp + 273.15 #T_1*273.15
-        u_temperature_w = tmp + 273.15 #T_2s*273.15 #u_temperature_f
+        return (self.wc_new - x) - 1*self.m_dot
+    def heat_f_w_flux(self,x,eq_num):
+        ## 4: FD x, 5: BD y, 6: BD x, 7: FD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
+        if (eq_num == 4)|(eq_num == 5)|(eq_num == 6)|(eq_num == 7):
+            heat_w = self.heat_w(x,eq_num)
+        elif eq_num == 8:
+            print(self.heat_w(x,4))
+            print(self.heat_w(x,5))
+            heat_w = torch.mean(self.heat_w(x,4),self.heat_w(x,5))
+        elif eq_num == 9:
+            heat_w = torch.mean(self.heat_w(x,5),self.heat_w(x,6))
+        elif eq_num == 10:
+            heat_w = torch.mean(self.heat_w(x,6),self.heat_w(x,7))
+        elif eq_num == 11:
+            heat_w = torch.mean(self.heat_w(x,4),self.heat_w(x,7))
+        heat_f = self.heat_f(x)
+        eq_flux = { 4: self.Dx(x)/self.h, 
+            5: -self.Dy(x)/self.h, 6: -self.Dx(x)/self.h, 7: self.Dy(x)/self.h, 
+            8: self.Dx(x)/self.h-self.Dy(x)/self.h, 9: -self.Dy(x)/self.h-self.Dx(x)/self.h, 
+            10: -self.Dx(x)/self.h+self.Dy(x)/self.h, 11: self.Dx(x)/self.h+self.Dy(x)/self.h,}
+        return heat_f, heat_w, eq_flux[eq_num]
+
+    
+    def apply_evp(self,tmp,wc,eq_num):
+        heat_f, heat_w, flux = self.heat_f_w_flux(tmp,eq_num)
+        wc_f, _,_ = self.heat_f_w_flux(wc,eq_num)
+        u_temperature_f = heat_f + 273.15 #T_1*273.15
+        u_temperature_w = heat_w + 273.15 #T_2s*273.15 #u_temperature_f
         #h = #T+273.15
         u_fraction = 0.00725 #E
         self.fluid_density = 1.1614 #kg/m3
@@ -227,17 +257,24 @@ class Energy_Evp_layer(torch.nn.Module):
         x_v = 0.62198*P_v/(u_pressure-P_v)
         # 표면에서는 순수 용매가 포화상태로 있다고 가정시 계면 수증기의 절대습도 x_v[kg/kg]
         x_a = u_fraction #주변 공기의 절대습도 [kg/kg]
-        C3 = torch.pow((torch.mean(wc)/self.wc0),self.n) # solvent remaining coefficient
+        C3 = torch.pow((wc_f/self.wc0),self.n) # solvent remaining coefficient
         porous_correction = self.C1*self.C2*C3*self.C4*self.CT
         
         #m_dot = heat_flux/(2317.0*(10**3))*porous_correction #the heat of vaporization = 2317 [kj/kg] at 350K
-        self.m_dot = self.flux/(self.cp_a+cp_v*x_a)*(x_v-x_a)*porous_correction#/(1e-3*THcell) #kg/m3/sec
+        self.m_dot = flux/(self.cp_a+cp_v*x_a)*(x_v-x_a)*porous_correction#/(1e-3*THcell) #kg/m3/sec
         #evp_water = self.m_dot/self.fluid_density #(1e-3*THcell) #공기의 무게 1m3당 1.2kg, plate area 0.46
-               
-        print(torch.mean(wc))
-        return self.m_dot
+        
+        wc_new =  wc[...,1:-1,1:-1] - 1*self.m_dot
+        
+        # source term for energy equation
+        hfg = 2257.0 #KJ/Kg
+        src_h = -1*self.m_dot*hfg#*1000.0
+        src_temp = src_h / (1e-3*self.cp_a) / self.fluid_density #/(le-3*THcell)
 
-
+        flux += src_temp
+        return wc_new
+    
+    '''
     def evp_src(self,m_dot):
         
         # source term for energy equation
@@ -246,29 +283,27 @@ class Energy_Evp_layer(torch.nn.Module):
         src_temp = src_h / (1e-3*self.cp_a) / self.fluid_density #/(le-3*THcell)
         #nd_src_temp = src_temp - 273.15
         
-        return 0#src_temp
-    
+        return src_temp
+    '''
+    def set_bc(self, bc_num, outvar):
+        var_num = {'tmp':0}
+        indices = (self.boundary == bc_num).nonzero(as_tuple=True)
+        for item in outvar:
+            self.bc_mask[...,var_num[item], indices[0], indices[1]] = 0
+            self.bc_value[..., var_num[item], indices[0], indices[1]] = outvar[item]
+        return None
 
-    def apply_Energy(self, wc, x, eq_num):
+    def apply_Energy(self, x, eq_num):
         mask = torch.zeros_like(self.boundary)
         indices = (self.boundary == eq_num).nonzero(as_tuple=True)
         mask[...,indices[0],indices[1]] = 1
         self.eq_mask[...,indices[0],indices[1]] = eq_num
 
-        ## 4: FD x, 5: BD y, 6: BD x, 7: FD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
+        ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7 
 
-        eq_energy = {0:self.advection_diffusion(x), 2:self.advection_diffusion(x),
-        3: self.advection_diffusion(x),
-        4: self.advection_diffusion(x)+self.flux*self.Dx(x)+self.wc(wc), 
-        5: self.advection_diffusion(x)+self.flux*-1*self.Dy(x)+self.wc(wc),
-        6: self.advection_diffusion(x)+self.flux*-1*self.Dx(x)+self.wc(wc), 
-        7: self.advection_diffusion(x)+self.flux*self.Dy(x)+self.wc(wc), 
-        8: self.advection_diffusion(x)+self.flux*(-1*self.Dx(x)+self.Dy(x))+self.wc(wc), 
-        9: self.advection_diffusion(x)+self.flux*(self.Dy(x)+self.Dx(x))+self.wc(wc), 
-        10: self.advection_diffusion(x)+self.flux*(self.Dx(x)-self.Dy(x))+self.wc(wc), 
-        11: self.advection_diffusion(x)+self.flux*(-1*self.Dx(x)-self.Dy(x))+self.wc(wc),}
+        eq_energy = self.advection_diffusion(x)
 
-        return mask * eq_energy[eq_num]
+        return mask * eq_energy
 
     def forward(self, layout, heat_ini, wc, heat, flow):
         self.heat_ini = heat_ini
@@ -289,9 +324,8 @@ class Energy_Evp_layer(torch.nn.Module):
         wc_mask = torch.zeros_like(wc).detach()    
         wc_indices = (self.boundary > 3 ).nonzero(as_tuple=True)
         wc_mask[...,0, wc_indices[0], wc_indices[1]] = 1
-        #wc_value[..., 0, wc_indices[0], wc_indices[1]] = self.wc0
         wc_bc = wc * wc_mask# + wc_value
-        #wc_avg = torch.mean(wc_bc[wc_indices])
+        
         #print(wc_avg)
         # Dirichlet boundary
         self.bc_value = torch.zeros_like(heat).detach()
@@ -300,29 +334,39 @@ class Energy_Evp_layer(torch.nn.Module):
         self.set_bc(bc_num=1, outvar={'tmp':0}) # inlet
         
         heat_bc = heat * self.bc_mask + self.bc_value
-
-        x = F.pad(heat_bc, [1, 1, 1, 1], mode='reflect')  # constant, reflect, reflect
         
         # Source item
-        self.src = 300 * self.h + self.evp_src(self.evp(heat_bc,wc_bc)) #* self.h * self.h
-        self.flux = 300 * self.h + self.evp_src(self.evp(heat_bc,wc_bc)) #-3000
+        self.src = 300 * self.h #* 24 / 15#300 * self.h #* self.h * self.h
+        #self.src = (300 - self.evp_src(self.evp(heat_bc,wc_bc)))* self.h  #* self.h * self.h
         
-        f = self.cof * abs(self.geom-1) * self.src * self.h
+        f = self.cof * abs(self.geom-1) * self.src #* self.h
+
+        # Dirichlet boundary
+        self.bc_value = torch.zeros_like(heat).detach()
+        self.bc_mask = torch.ones_like(heat).detach()
         
+        self.set_bc(bc_num=1, outvar={'tmp':0}) # inlet
+        
+        heat_bc = heat * self.bc_mask + self.bc_value
+        self.heat_new = torch.zeros_like(heat_bc)
+
+        x = F.pad(heat_bc, [1, 1, 1, 1], mode='reflect')  # constant, reflect, reflect
+        w = F.pad(wc_bc, [1,1,1,1], mode='constant',value=0)
         # physics
         self.eq_mask = torch.zeros_like(self.boundary)
-        loss_eq = torch.zeros_like(heat)
-
+        loss_energy = torch.zeros_like(heat)
+        wc_evp = torch.zeros_like(heat)
         for eq_num in [0,2,3,4,5,6,7,8,9,10,11]:
-            loss_eq += self.apply_Energy(wc_bc, x,eq_num)
-        
-        energy_loss = self.base_loss(loss_eq, f)
-        wc_loss = self.base_loss((self.wc0*wc_mask-self.m_dot) , wc_bc)
+            loss_energy += self.apply_Energy(x,eq_num)
 
-        energy_loss += wc_loss
-        
-        return energy_loss, heat_bc, self.eq_mask
+        for eq_num in [4,5,6,7,8,9,10,11]:
+            wc_evp += self.apply_evp(x,w,eq_num)
+            
 
+        mse_energy = self.base_loss(loss_energy, f)
+        mse_wc = 0#self.base_loss((self.wc*wc_mask-self.m_dot),wc_bc)
+        
+        return mse_energy+mse_wc, heat_bc, self.heat_new, self.eq_mask
 
 
 class Jacobi_layer(torch.nn.Module):

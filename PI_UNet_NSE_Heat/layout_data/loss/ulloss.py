@@ -42,7 +42,7 @@ class NSE_layer(torch.nn.Module):
         return conv2d(x, self.bdy_weight.to(device=x.device), bias=None, stride=1, padding=0)
     def laplace(self, x):
         return conv2d(x, self.laplace_weight.to(device=x.device), bias=None, stride=1, padding=0)
-    ## 4: FD x, 5: FD y, 6: BD x, 7: BD y, 8: 4+5, 9: 5+6, 10: 6+7, 11: 4+7     
+    
     # NSE
     def momentum_u(self,x,case):
         u = x[...,0,:,:]
@@ -57,8 +57,8 @@ class NSE_layer(torch.nn.Module):
         v = x[...,1,:,:]
         p = x[...,2,:,:]
         
-        if (case==7)|(case==10)|(case==11): Dp = self.BDy(p)
-        elif (case==5)|(case==8)|(case==9): Dp = self.FDy(p)
+        if (case==7)|(case==10)|(case==11): Dp = self.FDy(p)
+        elif (case==5)|(case==8)|(case==9): Dp = self.BDy(p)
         else: Dp = self.Dy(p)
         
         return self.u*self.Dx(v)/self.h + self.v*self.Dy(v)/self.h + Dp/self.h - self.nu*(self.laplace(v))/self.h/self.h
@@ -140,7 +140,7 @@ class Energy_layer(torch.nn.Module):
         self.h = self.length_x / self.nx
         self.cof = TEMPER_COEFFICIENT
         self.base_loss = base_loss
-        self.diff_coeff = 0#2.2 * 1e-5
+        self.diff_coeff = 1#2.2 * 1e-5
 
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
         self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
@@ -180,9 +180,7 @@ class Energy_layer(torch.nn.Module):
         elif (case==5)|(case==8)|(case==9): vDy = self.v*self.FDy(x)/self.h
         else: vDy = self.v*self.Dy(x)/self.h
         '''
-        uDx = self.u*self.Dx(x)/self.h
-        vDy = self.v*self.Dy(x)/self.h
-        return uDx+vDy - self.diff_coeff*(self.laplace(x))/self.h/self.h
+        return self.u*self.Dx(x) + self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h
         #return self.u*self.Dx(x)+self.v*self.Dy(x) - self.diff_coeff*(self.laplace(x))/self.h
     def newman_bc(self,x):
         return conv2d(x, self.boundary_weight.to(device=x.device), bias=None, stride=1, padding=0)
@@ -250,7 +248,7 @@ class Energy_layer(torch.nn.Module):
         self.boundary[...,-1,:] = 3 # lower wall
         
         # Source item
-        self.src = 0 #300 * 24 / 15#300 * self.h #* self.h * self.h
+        self.src = 300 * self.h #* 24 / 15#300 * self.h #* self.h * self.h
         self.flux = 0#300  #-3000
         
         f = self.cof * abs(self.geom-1) * self.src #* self.h
@@ -260,7 +258,7 @@ class Energy_layer(torch.nn.Module):
         self.bc_mask = torch.ones_like(heat).detach()
         
         self.set_bc(bc_num=1, outvar={'tmp':0}) # inlet
-        self.set_bc(bc_num=2, outvar={'tmp':30}) # src
+        #self.set_bc(bc_num=2, outvar={'tmp':30}) # src
         # heat flux boundary
         '''
         self.set_bc(bc_num=4, outvar={'tmp':300*self.h})
@@ -276,7 +274,9 @@ class Energy_layer(torch.nn.Module):
         
         heat_bc = heat * self.bc_mask + self.bc_value
 
-        x = F.pad(heat_bc, [1, 1, 1, 1], mode='reflect')  # constant, reflect, reflect
+        x = F.pad(heat_bc[...,7:-7,:], [1, 1, 1, 1], mode='reflect')  # constant, reflect, reflect
+        x = F.pad(x,[0,0,7,7],mode='constant',value=0)
+        
         
         # physics
         self.eq_mask = torch.zeros_like(self.boundary)
@@ -285,13 +285,13 @@ class Energy_layer(torch.nn.Module):
         #mse_energy = 0
         #mse_flux = 0
 
-        for eq_num in [0,3,4,5,6,7,8,9,10,11]:
-            loss_energy = self.apply_Energy(x,eq_num)
+        for eq_num in [0,2,3,4,5,6,7,8,9,10,11]:
+            loss_energy += self.apply_Energy(x,eq_num)
             #mse_energy += self.base_loss(loss_energy,torch.zeros_like(loss_energy))
         mse_energy = self.base_loss(loss_energy, f)
         
         for eq_num in []:#4,5,6,7,8,9,10,11]:
-            loss_flux = self.apply_Flux(x,eq_num)
+            loss_flux += self.apply_Flux(x,eq_num)
             #mse_flux += self.base_loss(loss_flux, torch.zeros_like(loss_flux))
         flux_loss=MSELoss(reduction='sum')
         mse_flux = flux_loss(loss_flux,torch.zeros_like(loss_flux))

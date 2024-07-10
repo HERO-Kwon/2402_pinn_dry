@@ -28,7 +28,7 @@ def main(hparams):
     # 1 INIT LIGHTNING MODEL
     # ------------------------
     #model = UnetUL(hparams)
-    checkpoint_path = '/home/hero/Git/2402_pinn_dry/PI_UNet_NSE_Heat/example/lightning_logs/version_43/checkpoints/epoch=5-step=17999.ckpt'
+    checkpoint_path = '/home/hero/Git/2402_pinn_dry/PI_UNet_Evp/saved_checkpoint/energy_src_300/checkpoints/epoch=31-step=95999.ckpt'
     model = UnetUL.load_from_checkpoint(checkpoint_path)
     # ------------------------
     # 2 INIT TRAINER

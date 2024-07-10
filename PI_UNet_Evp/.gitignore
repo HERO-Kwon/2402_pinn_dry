@@ -1,3 +1,6 @@
 /example/figure/*
+/example/figure/transient/*
 /example/lightning_logs/*
 *.pyc
+*.png
+*.ckpt
