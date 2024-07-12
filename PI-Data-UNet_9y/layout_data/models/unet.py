@@ -50,7 +50,7 @@ class _DecoderBlock(nn.Module):
         return self.decode2(x2)
 
 class SeparateDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, factors=2, num_classes=9):
+    def __init__(self, in_channels, out_channels, factors=2, num_classes=1):
         super(SeparateDecoder, self).__init__()
         self.dec4 = _DecoderBlock(512 * factors, 256 * factors)
         self.dec3 = _DecoderBlock(256 * factors, 128 * factors)
@@ -73,15 +73,15 @@ class UNet(nn.Module):
         self.enc3 = _EncoderBlock(64 * factors, 128 * factors)
         self.enc4 = _EncoderBlock(128 * factors, 256 * factors)
         self.center = _EncoderBlock(256 * factors, 512 * factors)
-        if num_classes==27:
+        if num_classes==3:
             # Separate decoders for U, V, and P
-            self.decoder_U = SeparateDecoder(512 * factors, 9)
-            self.decoder_V = SeparateDecoder(512 * factors, 9)
-            self.decoder_P = SeparateDecoder(512 * factors, 9)
-        elif num_classes==18:
+            self.decoder_U = SeparateDecoder(512 * factors, 1)
+            self.decoder_V = SeparateDecoder(512 * factors, 1)
+            self.decoder_P = SeparateDecoder(512 * factors, 1)
+        elif num_classes==2:
             # Separate decoders for T
-            self.decoder_tmp = SeparateDecoder(512 * factors, 9)
-            self.decoder_wc = SeparateDecoder(512 * factors, 9)
+            self.decoder_tmp = SeparateDecoder(512 * factors, 1)
+            self.decoder_wc = SeparateDecoder(512 * factors, 1)
         initialize_weights(self)
 
     def forward(self, x, num_classes):
@@ -90,13 +90,13 @@ class UNet(nn.Module):
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
         center = self.center(enc4)
-        if num_classes==27:
+        if num_classes==3:
             # Decoding paths for U, V, and P
             out_U = self.decoder_U(center, enc4, enc3, enc2, enc1)
             out_V = self.decoder_V(center, enc4, enc3, enc2, enc1)
             out_P = self.decoder_P(center, enc4, enc3, enc2, enc1)
             out_Unet = torch.cat([out_U, out_V, out_P], dim=1)
-        elif num_classes==18:
+        elif num_classes==2:
             out_tmp = self.decoder_tmp(center, enc4, enc3, enc2, enc1)
             out_wc = self.decoder_wc(center, enc4, enc3, enc2, enc1)
             out_Unet = torch.cat([out_tmp, out_wc], dim=1)

@@ -8,7 +8,7 @@ TOL = 1e-14
 def visualize_heatmap(x, y, heat_list, heat_pre_list, epoch):
     plt.figure(figsize=(18, 25))
     num = len(heat_list)
-    '''
+    
     for i in range(num):
         plt.subplot(num, 3, i * 3 + 1)
         plt.contourf(x, y, heat_list[i].squeeze(), levels=50, cmap=matplotlib.cm.coolwarm)
@@ -43,3 +43,4 @@ def visualize_heatmap(x, y, heat_list, heat_pre_list, epoch):
             plt.show()  # 각 반복마다 figure를 보여줌
     plt.savefig('figure/epoch' + str(epoch) + '_pre.png', bbox_inches='tight', pad_inches=0)
     plt.close()
+    '''

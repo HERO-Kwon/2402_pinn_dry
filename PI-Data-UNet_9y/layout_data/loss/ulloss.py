@@ -110,7 +110,8 @@ class Jacobi_layer(torch.nn.Module):
         self.length = length
         self.bcs = bcs
         # The weight 1/4(u_(i, j-1), u_(i, j+1), u_(i-1, j), u_(i+1, j))
-        self.weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
+        base_weight = torch.Tensor([[[[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]]]])
+        self.weight = base_weight.repeat(5, 1, 1, 1) 
         # Padding
         self.nx = nx
         self.scale_factor = 1  # self.nx/200
@@ -120,14 +121,14 @@ class Jacobi_layer(torch.nn.Module):
         self.cof = 0.25 * STRIDE ** 2 / TEMPER_COEFFICIENT
 
     def jacobi(self, x):
-        return conv2d(x, self.weight.to(device=x.device), bias=None, stride=1, padding=0)
+        return conv2d(x, self.weight.to(device=x.device), bias=None, stride=1, padding=0, groups=5)
 
     def forward(self, layout, heat, n_iter):
         # Source item
         f = self.cof * layout
         # The nodes which are not in boundary
         G = torch.ones_like(heat).detach()
-
+        
         if self.bcs is None or len(self.bcs) == 0 or len(self.bcs[0]) == 0:  # all are Dirichlet bcs
             pass
         else:
@@ -150,6 +151,7 @@ class Jacobi_layer(torch.nn.Module):
                     G[..., -1:, idx_start:idx_end] = torch.zeros_like(G[..., -1:, idx_start:idx_end])
                 else:
                     raise ValueError("bc error!")
+        
         for i in range(n_iter):
             if i == 0:
                 x = F.pad(heat * G, [1, 1, 1, 1], mode='reflect')

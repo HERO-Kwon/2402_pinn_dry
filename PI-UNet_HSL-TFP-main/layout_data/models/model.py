@@ -30,8 +30,8 @@ class UnetUL(LightningModule):
         self.model = UNet(in_channels=1, num_classes=1, bn=False)
 
     def _build_loss(self):
-        #self.jacobi = Jacobi_layer(nx=self.hparams.nx, length=self.hparams.length, bcs=self.hparams.bcs)
-        self.jacobi = LaplaceLoss(nx=self.hparams.nx, length=self.hparams.length, bcs=self.hparams.bcs)
+        self.jacobi = Jacobi_layer(nx=self.hparams.nx, length=self.hparams.length, bcs=self.hparams.bcs)
+        #self.jacobi = LaplaceLoss(nx=self.hparams.nx, length=self.hparams.length, bcs=self.hparams.bcs)
 
     def forward(self, x):
         y = self.model(x)
@@ -106,7 +106,7 @@ class UnetUL(LightningModule):
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
         # The loss of govern equation + Online Hard Sample Mining
-        '''
+        
         with torch.no_grad():
             heat_jacobi = self.jacobi(layout, heat_pre, 1)
 
@@ -114,8 +114,8 @@ class UnetUL(LightningModule):
         # loss_fun = torch.nn.MSELoss()
         # loss_fun = torch.nn.L1Loss()
         loss_jacobi = loss_fun(heat_pre - heat_jacobi, torch.zeros_like(heat_pre - heat_jacobi))
-        '''
-        loss_jacobi = self.jacobi(layout, heat_pre)#, 1)
+        
+        #loss_jacobi = self.jacobi(layout, heat_pre)#, 1)
         loss = loss_jacobi
 
         self.log('loss_jacobi', loss_jacobi)
@@ -129,12 +129,12 @@ class UnetUL(LightningModule):
         heat_pred_k = heat_pre + 298
 
         layout = layout * self.hparams.std_layout + self.hparams.mean_layout
-        '''
+        
         loss_jacobi = F.l1_loss(
             heat_pre, self.jacobi(layout, heat_pre.detach(), 1)
         )
-        '''
-        loss_jacobi = self.jacobi(layout, heat_pre.detach())#, 1)
+        
+        #loss_jacobi = self.jacobi(layout, heat_pre.detach())#, 1)
         val_mae = F.l1_loss(heat_pred_k, heat)
 
         if batch_idx == 0:
