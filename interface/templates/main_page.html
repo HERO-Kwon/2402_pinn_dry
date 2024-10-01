@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>'물리지식신경망:건조로 해석 POC모델'</title>
+<style>
+    body { display: flex; font-family: Arial, Helvetica, sans-serif; }
+    .left, .right { flex: 1; padding: 20px;}
+    table { border-collapse: collapse; width: 100%;}
+    td, th { border: 1px solid #dddddd; text-align: left; padding: 11px;}
+    #runButton { margin: 20px 0; display: block;}
+    .output { height: 200px; border: 1px solid #dddddd; margin-bottom: 20px; position: relative;}
+    .output-title { text-align: center; font-weight: bold; margin-top: -20px; background: #FFF; padding: 50px; width: auto; position: absolute; left: 50%; transform: translateX(-50%);}
+    .section-title { font-size: 18px; margin-bottom: 10px;}
+</style>
+</head>
+<body>
+
+<div class="left">
+    <div class="section-title">Input: HU3, EV32, 40m/min, A_side</div>
+    <form method="post" id="dataForm">
+        <table class="main-input">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>스팀 2bar</th>
+                    <th>온도 (oC)</th>
+                    <th>순환 Fan (RPM)</th>
+                    <th>배기 Fan (RPM)</th>
+                    <th>열풍 온도 (oC)</th>
+                    <th>열풍 급기 (RPM)</th>
+                </tr>
+            </thead>
+            <tr>
+                <td>01 Zone</td>
+                <td><input type="text" name="z01[]" value="Off" required></td>
+                <td><input type="text" name="z01[]" value="90" required></td>
+                <td><input type="text" name="z01[]" value="1200" required></td>
+                <td><input type="text" name="z01[]" value="700" required></td>
+                <td><input type="text" name="z01[]" value="" required></td>
+                <td><input type="text" name="z01[]" value="" required></td>
+            </tr>
+            <tr>
+                <td>02 Zone</td>
+                <td><input type="text" name="z02[]" value="Off" required></td>
+                <td><input type="text" name="z02[]" value="90" required></td>
+                <td><input type="text" name="z02[]" value="1200" required></td>
+                <td><input type="text" name="z02[]" value="700" required></td>
+                <td><input type="text" name="z02[]" value="" required></td>
+                <td><input type="text" name="z02[]" value="" required></td>
+            </tr>
+            <tr>
+                <td>03 Zone</td>
+                <td><input type="text" name="z03[]" value="Off" required></td>
+                <td><input type="text" name="z03[]" value="90" required></td>
+                <td><input type="text" name="z03[]" value="1200" required></td>
+                <td><input type="text" name="z03[]" value="700" required></td>
+                <td><input type="text" name="z03[]" value="" required></td>
+                <td><input type="text" name="z03[]" value="" required></td>
+            </tr>
+            <tr>
+                <td>04 Zone</td>
+                <td><input type="text" name="z04[]" value="Off" required></td>
+                <td><input type="text" name="z04[]" value="90" required></td>
+                <td><input type="text" name="z04[]" value="1200" required></td>
+                <td><input type="text" name="z04[]" value="700" required></td>
+                <td><input type="text" name="z04[]" value="" required></td>
+                <td><input type="text" name="z04[]" value="" required></td>
+            </tr>
+            <tr>
+                <td>05 Zone</td>
+                <td><input type="text" name="z05[]" value="Off" required></td>
+                <td><input type="text" name="z05[]" value="90" required></td>
+                <td><input type="text" name="z05[]" value="1200" required></td>
+                <td><input type="text" name="z05[]" value="700" required></td>
+                <td><input type="text" name="z05[]" value="" required></td>
+                <td><input type="text" name="z05[]" value="" required></td>
+            </tr>
+            <tr>
+                <td>06 Zone</td>
+                <td><input type="text" name="z06[]" value="Off" required></td>
+                <td><input type="text" name="z06[]" value="90" required></td>
+                <td><input type="text" name="z06[]" value="1200" required></td>
+                <td><input type="text" name="z06[]" value="700" required></td>
+                <td><input type="text" name="z06[]" value="" required></td>
+                <td><input type="text" name="z06[]" value="" required></td>
+            </tr>
+        </table>
+        <input type="submit" name="action" value="main_input">
+    </form>
+</div>
+</head>
+</body>
+
+<div class="right">
+    <div class="section-title">건조로 전체 분석</div>
+    <div class="output" id="graphOutput">
+        <div class="output-title"> 잔존용매량 Profile </div>
+        {% if image %}
+            <img src="{{ image }}" alt="Graph Image">
+        {% endif %}
+</div>
+<div class="section-title"> Zone별 상세 분석 </div>
+    <form method="post" id="adddataForm">
+        <table class="additional-input"></table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Zone #</th>
+                    <th>Elapsed(%)</th>
+                    <th>Parameter</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Additional Info</td>
+                    <td><input type="text" name="zone_num" value="" placeholder="1~6"></td>
+                    <td><input type="text" name="elapsed" value="" placeholder="25,50,75,100"></td>
+                    <td><input type="text" name="parameter" value="u,v,w,p,temp,udm0"></td>
+                </tr>
+            </tbody>
+        </table>
+        <input type="submit" name="action" value="add_input">
+    </form>
+<div class="output" id="detailedGraphOutput">
+    <!-- <div class="output-title">상세분석 Graph</div> -->
+    {% if add_image %}
+    <img src="{{ add_image }}" alt="Additional Graph Image">
+    {% endif %}
+</div>
+</div>
+
+<script>
+document.getElementById('runButton').addEventListener('click', function() {
+    //logic to update output values and graphs
+    document.getElementById('graphOutput').textContent = 'Graph updated!';
+    document.getElementById('detailedGraphOutput').textContent = 'Detailed Graph updated!';
+});
+</script>
+</body>
+</html>

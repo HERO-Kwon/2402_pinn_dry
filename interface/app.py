@@ -99,3 +99,33 @@ def index() :
             add_file_list = [file for file in os.listdir(path_result) if (file.startswith(str_startswith) & file.endswith(parameter+'.tiff'))]
 
             # create figure
+            if parameter == 'udm0':
+                add_udm0_list = [get_max_udm0(val) for val in add_file_list]
+                fig = plt.figure(figsize=(10,2))
+                plt.plot(add_udm0_list)
+                fig.suptitle(f'{parameter} @z:{zone_num},s:{str_elapsed}')
+            else:
+                fig,axes = plt.subplots(1,6,figsize=(10,2))
+                # generate plot
+                for i,ax in enumerate(axes.flatten()):
+                    add_im = Image.open(path_result + add_file_list[i])
+                    add_imarray = np.array(add_im) # image to np array
+                    ax.contourf(add_imarray,cmap='viridis')
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_title(f"y{i}")
+
+                fig.suptitle(f'Contour: {parameter} @z:{zone_num},s:{str_elapsed}')
+            
+            # convert to png
+            pngImage = io.BytesIO()
+            FigureCanvas(fig).print_png(pngImage)
+            # Base64 encoding
+            pngImageB64String = "data:image/png;base64,"
+            pngImageB64String += base64.b64encode(pngImage.getvalue()).decode('utf8')
+            return render_template('main_page.html', add_image=pngImageB64String)
+        
+    return render_template('main_page.html')
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
