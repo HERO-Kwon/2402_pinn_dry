@@ -1,13 +1,14 @@
 # config
 
 # dataset path
-data_root: /home/hero/Data/heat_layout_data/200x200_0.045_0.055/complex_component/FDM
+data_root: C:/Data/heat_layout_data/200x200_0.045_0.055/complex_component/FDM
+
 train_dir: train
 val_dir: train
 test_dir: train
-train_list: /home/hero/Data/heat_layout_data/train.txt
-val_list: /home/hero/Data/heat_layout_data/val.txt
-test_list: /home/hero/Data/heat_layout_data/test.txt
+train_list: C:/Data/heat_layout_data/train.txt
+val_list: C:/Data/heat_layout_data/val.txt
+test_list: C:/Data/heat_layout_data/test.txt
 
 # dataset properties
 load_name: F # F, list
@@ -39,3 +40,4 @@ std_layout: 10000
 # mean_heat: 0
 # std_heat: 1
 
+/home/hero

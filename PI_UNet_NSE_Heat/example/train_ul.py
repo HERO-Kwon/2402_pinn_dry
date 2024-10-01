@@ -35,7 +35,7 @@ def main(hparams):
     trainer = pl.Trainer(
         max_epochs=hparams.max_epochs,
         callbacks=[checkpoint_callback],
-        gpus=[hparams.gpus],
+        #gpus=[hparams.gpus],
         precision=16 if hparams.use_16bit else 32,
         val_check_interval=hparams.val_check_interval,
         resume_from_checkpoint=hparams.resume_from_checkpoint,
